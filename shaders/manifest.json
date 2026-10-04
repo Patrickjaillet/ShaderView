@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "fichiers": [
+    {
+      "fichier": "mushroomboy3D.json",
+      "taille": 21161,
+      "empreinte": "9d28b0e2236df411ee569a0e39a009c8a6a6575cbd36bdc3cbbaa63a310d2050",
+      "format": "objet",
+      "erreur": null,
+      "shaders": [
+        {
+          "index": 0,
+          "id": "N3KGWc",
+          "titre": "Mushroom Boy 3D (The Hero)",
+          "auteur": null,
+          "description": "x",
+          "tags": [
+            "game"
+          ],
+          "passes": [
+            "image"
+          ],
+          "multipasse": false,
+          "son": false,
+          "canaux": [],
+          "medias": [],
+          "avertissements": [],
+          "erreur": null
+        }
+      ]
+    }
+  ]
+}
