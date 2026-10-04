@@ -26,21 +26,26 @@ import {
   selectionnerJson,
 } from './catalog.js';
 import { ErreurParseur, parserShader } from './parser.js';
-import { ErreurCompilation, ErreurContexte, MoteurRendu, TAILLE_FACE_CUBEMAP, convertirGles1VersGles3 } from './renderer.js';
+import { ErreurCompilation, ErreurContexte, MoteurRendu, TAILLE_FACE_CUBEMAP, convertirGles1VersGles3, convertirShaderNormalise } from './renderer.js';
 import { decoderImage, genererMediaSubstitue, resoudreNomMedia } from './media.js';
 import { CANAUX_AVEC_MEDIA } from './shader-meta.js';
 import { LecteurAudio, TAILLE_FFT, construireTextureVisualiseur, rendreSonHorsLigne } from './audio.js';
 import { Inspecteur, elementsDepuisDocument } from './inspector.js';
+import { GenerateurMiniatures } from './thumbnails.js';
+import { ExportVideo, FORMAT_EXPORT, nomFichierExport as fabriquerNomFichierExport } from './export/video.js';
+import { definirLangue, initialiserLangue, langue, traduire } from './i18n.js';
 
-const LIBELLES_SOURCE = {
-  [SOURCES.MANIFESTE]: 'manifeste',
-  [SOURCES.DOSSIER]: 'dossier local',
-  [SOURCES.FICHIERS]: 'fichiers locaux',
+const CLES_SOURCE = {
+  [SOURCES.MANIFESTE]: 'catalog.source.manifest',
+  [SOURCES.DOSSIER]: 'catalog.source.folder',
+  [SOURCES.FICHIERS]: 'catalog.source.files',
 };
 
 const etat = {
   catalogue: null,
   inspecteur: null,
+  // Miniatures de la liste (js/thumbnails.js) : un moteur partagé, un canevas dédié par entrée.
+  miniatures: null,
   jetonCatalogue: 0,
   jetonSelection: 0,
   moteur: null,
@@ -54,6 +59,11 @@ const etat = {
   // Pour les statistiques de performance (FPS lissé sur quelques images, voir mettreAJourStatsPerf).
   dernieresDurees: [],
   normaliseActive: null,
+  entreeSelectionnee: null,
+  exportEnCours: false,
+  annulationExport: null,
+  codecsAudioExport: null,
+  jetonCodecsAudioExport: 0,
   // Rechargement automatique : handle du dossier natif ouvert (source DOSSIER, pour le
   // resonder sans redemander la permission) et minuteur de sondage périodique (voir
   // demarrerSondageCatalogue). Un sélecteur de fichiers isolés (SOURCES.FICHIERS) n'a
@@ -70,6 +80,7 @@ const etat = {
 };
 
 const INTERVALLE_SONDAGE_MS = 5000;
+const DUREE_TRANSPORT_SECONDES = 60;
 
 const el = {};
 
@@ -151,48 +162,137 @@ function mettreAJourStatsPerf(deltaSecondes) {
   etat.inspecteur.afficherStatsPerf({ fps: moyenne > 0 ? 1 / moyenne : 0, resolutionsBuffers: resolutionsBuffers(etat.normaliseActive) });
 }
 
+function mettreAJourTransport() {
+  if (etat.moteur === null || el.transportTemps === undefined) return;
+  const temps = etat.moteur.horloge.temps;
+  el.transportTemps.value = traduire('transport.time', {
+    current: temps.toFixed(2),
+    total: DUREE_TRANSPORT_SECONDES.toFixed(2),
+  });
+  el.transportTemps.textContent = el.transportTemps.value;
+  if (document.activeElement !== el.transportPosition) el.transportPosition.value = String(Math.min(temps, DUREE_TRANSPORT_SECONDES));
+  const enMarche = etat.moteur.horloge.enMarche;
+  el.transportLecture.textContent = traduire(enMarche ? 'transport.pause' : 'transport.play');
+  el.transportLecture.setAttribute('aria-pressed', String(enMarche));
+}
+
+function definirDisponibiliteTransport(disponible) {
+  for (const controle of [el.transportLecture, el.transportReset, el.transportPosition, el.transportBoucle, el.transportPleinEcran, el.transportCapture]) {
+    controle.disabled = !disponible;
+  }
+  if (!disponible) {
+    el.transportPosition.value = '0';
+    el.transportTemps.value = traduire('transport.time', { current: '0.00', total: DUREE_TRANSPORT_SECONDES.toFixed(2) });
+    el.transportTemps.textContent = el.transportTemps.value;
+  } else {
+    mettreAJourTransport();
+  }
+}
+
+function brancherTransport() {
+  el.transportLecture.addEventListener('click', () => {
+    if (etat.moteur === null || etat.exportEnCours) return;
+    const horloge = etat.moteur.horloge;
+    if (horloge.enMarche) horloge.pause();
+    else {
+      if (horloge.temps >= DUREE_TRANSPORT_SECONDES) {
+        horloge.remettreAZero();
+        etat.moteur.reinitialiserTampons();
+      }
+      horloge.lire();
+    }
+    mettreAJourTransport();
+  });
+  el.transportReset.addEventListener('click', () => {
+    if (etat.moteur === null || etat.exportEnCours) return;
+    etat.moteur.horloge.pause();
+    etat.moteur.horloge.remettreAZero();
+    etat.moteur.reinitialiserTampons();
+    el.transportEtat.textContent = '';
+    mettreAJourTransport();
+  });
+  el.transportPosition.addEventListener('input', () => {
+    if (etat.moteur === null || etat.exportEnCours) return;
+    const secondes = Number(el.transportPosition.value);
+    const horloge = etat.moteur.horloge;
+    horloge.definirEtat(secondes, Math.round(secondes * 30), 0);
+    etat.moteur.reinitialiserTampons();
+    mettreAJourTransport();
+  });
+  el.transportPleinEcran.addEventListener('click', async () => {
+    try {
+      if (document.fullscreenElement === el.scene) await document.exitFullscreen();
+      else await el.scene.requestFullscreen();
+    } catch (erreur) {
+      el.transportEtat.textContent = traduire('transport.fullscreenFailed', {
+        message: erreur instanceof Error ? erreur.message : String(erreur),
+      });
+    }
+  });
+  el.transportCapture.addEventListener('click', () => {
+    try {
+      el.viewport.toBlob((blob) => {
+        if (blob === null) {
+          el.transportEtat.textContent = traduire('transport.captureFailed', { message: traduire('transport.captureNoData') });
+          return;
+        }
+        const lien = document.createElement('a');
+        const titre = etat.entreeSelectionnee?.titre ?? 'ShaderView';
+        const nom = titre.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/g, '').trim() || 'shader';
+        const url = URL.createObjectURL(blob);
+        lien.href = url;
+        lien.download = `${nom}.png`;
+        document.body.append(lien);
+        lien.click();
+        setTimeout(() => {
+          lien.remove();
+          URL.revokeObjectURL(url);
+        }, 0);
+        el.transportEtat.textContent = traduire('transport.captureDone');
+      }, 'image/png');
+    } catch (erreur) {
+      el.transportEtat.textContent = traduire('transport.captureFailed', {
+        message: erreur instanceof Error ? erreur.message : String(erreur),
+      });
+    }
+  });
+  el.transportBoucle.addEventListener('change', () => {
+    el.transportEtat.textContent = '';
+  });
+  document.addEventListener('fullscreenchange', () => {
+    el.transportPleinEcran.setAttribute('aria-pressed', String(document.fullscreenElement === el.scene));
+  });
+}
+
 function demarrerBoucle() {
   if (etat.boucleActive) return;
   etat.boucleActive = true;
   let dernierHorodatage = null;
   const image = (horodatage) => {
     if (!etat.boucleActive) return;
-    if (etat.moteur !== null) {
+    if (etat.moteur !== null && !etat.exportEnCours) {
       const deltaSecondes = dernierHorodatage === null ? 0 : (horodatage - dernierHorodatage) / 1000;
       dernierHorodatage = horodatage;
-      if (etat.moteur.horloge.enMarche) etat.moteur.horloge.avancer(deltaSecondes);
+      if (etat.moteur.horloge.enMarche) {
+        etat.moteur.horloge.avancer(deltaSecondes);
+        if (etat.moteur.horloge.temps >= DUREE_TRANSPORT_SECONDES) {
+          if (el.transportBoucle?.checked) {
+            etat.moteur.horloge.remettreAZero();
+            etat.moteur.reinitialiserTampons();
+          } else {
+            etat.moteur.horloge.sauterA(DUREE_TRANSPORT_SECONDES);
+            etat.moteur.horloge.pause();
+          }
+        }
+      }
       mettreAJourVisualiseurs();
       etat.moteur.rendre();
+      mettreAJourTransport();
       mettreAJourStatsPerf(deltaSecondes);
     }
     requestAnimationFrame(image);
   };
   requestAnimationFrame(image);
-}
-
-function convertirPasse(passe) {
-  return { ...passe, code: convertirGles1VersGles3(passe.code) };
-}
-
-/**
- * Convertit le code GLES 1.00 → 3.00 (voir convertirGles1VersGles3) de toutes les
- * passes d'un shader normalisé (common, buffers, image, cubemaps), sans toucher aux
- * autres champs (entrées, ordre de rendu déjà résolu par parser.js).
- * @param {import('./parser.js').ShaderNormalise} normalise
- * @returns {import('./parser.js').ShaderNormalise}
- */
-function convertirShaderNormalise(normalise) {
-  const buffers = {};
-  for (const [lettre, passe] of Object.entries(normalise.buffers)) buffers[lettre] = convertirPasse(passe);
-  const cubemaps = {};
-  for (const [nom, passe] of Object.entries(normalise.cubemaps)) cubemaps[nom] = convertirPasse(passe);
-  return {
-    ...normalise,
-    commun: normalise.commun !== null ? convertirPasse(normalise.commun) : null,
-    buffers,
-    cubemaps,
-    image: convertirPasse(normalise.image),
-  };
 }
 
 /**
@@ -226,7 +326,7 @@ function rendreSelection(shader) {
   } catch (e) {
     if (e instanceof ErreurCompilation) {
       etat.inspecteur.afficherJournalCompilation(e.idPasse ?? 'image', e.erreursLigne);
-      etat.inspecteur.afficherAlerte(e.erreursLigne.length > 0 ? 'Erreur de compilation (voir le journal ci-dessous).' : e.message);
+      etat.inspecteur.afficherAlerte(e.erreursLigne.length > 0 ? traduire('catalog.compileError') : e.message);
       etat.normaliseActive = null;
       return;
     }
@@ -271,14 +371,14 @@ function arreterSonSelection() {
 async function preparerSonSelection(normalise, jeton) {
   if (normalise.son === null || etat.moteur === null) return;
   etat.inspecteur.afficherControleSon();
-  etat.inspecteur.definirEtatSon(false, 'Préparation du son…');
+  etat.inspecteur.definirEtatSon(false, traduire('audio.prepare'));
   const code = convertirGles1VersGles3(normalise.son.code);
   const commun = normalise.commun !== null ? convertirGles1VersGles3(normalise.commun.code) : null;
   let tampon;
   try {
     tampon = await rendreSonHorsLigne(etat.moteur.gl, contexteAudio(), code, commun, {
       surProgres: async (fait, total) => {
-        if (jeton === etat.jetonSelection) etat.inspecteur.definirEtatSon(false, `Préparation du son… ${Math.round((fait / total) * 100)} %`);
+        if (jeton === etat.jetonSelection) etat.inspecteur.definirEtatSon(false, traduire('sound.prepareProgress', { percent: Math.round((fait / total) * 100) }));
         // Rend la main au navigateur entre deux blocs : le calcul d'un shader son
         // (plusieurs synchronisations GPU via readPixels) ne doit pas geler l'affichage.
         await new Promise((resolu) => requestAnimationFrame(resolu));
@@ -286,13 +386,13 @@ async function preparerSonSelection(normalise, jeton) {
     });
   } catch (e) {
     if (jeton !== etat.jetonSelection) return;
-    etat.inspecteur.definirEtatSon(false, e instanceof ErreurCompilation ? `Son non disponible : ${e.message}` : (e instanceof Error ? e.message : String(e)));
+    etat.inspecteur.definirEtatSon(false, e instanceof ErreurCompilation ? traduire('audio.unavailable', { message: e.message }) : (e instanceof Error ? e.message : String(e)));
     return;
   }
   if (jeton !== etat.jetonSelection) return;
   etat.lecteurSon = new LecteurAudio(contexteAudio(), tampon);
   etat.lecteurSon.volume = etat.inspecteur.volumePreference;
-  etat.inspecteur.definirEtatSon(false, `Prêt (${tampon.duration.toFixed(1)} s).`);
+  etat.inspecteur.definirEtatSon(false, traduire('audio.ready', { seconds: tampon.duration.toFixed(1) }));
 }
 
 async function basculerLectureSon() {
@@ -306,7 +406,7 @@ async function basculerLectureSon() {
     await etat.lecteurSon.lire();
     etat.inspecteur.definirEtatMarcheSon(true);
   } catch (e) {
-    etat.inspecteur.definirEtatSon(false, `Lecture impossible : ${e instanceof Error ? e.message : String(e)}`);
+    etat.inspecteur.definirEtatSon(false, traduire('audio.playbackFailed', { message: e instanceof Error ? e.message : String(e) }));
   }
 }
 
@@ -488,17 +588,17 @@ function afficherChoixMusique() {
 async function choisirPisteManuelle(src, nomPiste) {
   if (etat.bibliothequeAudio === null || !etat.entreesMusiqueNonResolues.has(src)) return;
   const jeton = etat.jetonSelection;
-  etat.inspecteur.definirEtatChoixMusique(src, `Chargement de « ${nomPiste} »…`);
+  etat.inspecteur.definirEtatChoixMusique(src, traduire('music.loading', { name: nomPiste }));
   try {
     const brut = await etat.bibliothequeAudio.lire(nomPiste);
     const tampon = await contexteAudio().decodeAudioData(brut.buffer.slice(brut.byteOffset, brut.byteOffset + brut.byteLength));
     if (jeton !== etat.jetonSelection) return;
     definirLecteurMusique(src, tampon);
     etat.entreesMusiqueNonResolues.delete(src);
-    etat.inspecteur.definirEtatChoixMusique(src, `« ${nomPiste} » chargée.`);
+    etat.inspecteur.definirEtatChoixMusique(src, traduire('music.loaded', { name: nomPiste }));
   } catch (e) {
     if (jeton !== etat.jetonSelection) return;
-    etat.inspecteur.definirEtatChoixMusique(src, `Lecture impossible : ${e instanceof Error ? e.message : String(e)}`);
+    etat.inspecteur.definirEtatChoixMusique(src, traduire('music.playbackFailed', { message: e instanceof Error ? e.message : String(e) }));
   }
 }
 
@@ -520,10 +620,15 @@ function appliquerCatalogue(catalogue, { conserverSelection = false } = {}) {
   etat.jetonSelection += 1;
   arreterSonSelection();
   etat.normaliseActive = null;
+  // Avant l'inspecteur : sa reconstruction de la liste demande déjà les canevas du nouveau catalogue.
+  etat.miniatures.definirCatalogue(catalogue);
   etat.inspecteur.definirCatalogue(catalogue);
 
   const n = catalogue.entrees.length;
-  let message = n === 0 ? `Aucun fichier .json trouvé (${LIBELLES_SOURCE[catalogue.source]}).` : `${n} entrée(s) (${LIBELLES_SOURCE[catalogue.source]})`;
+  const source = traduire(CLES_SOURCE[catalogue.source]);
+  const message = n === 0
+    ? traduire('catalog.none', { source })
+    : traduire('catalog.entries', { count: n, source });
   etat.inspecteur.definirMessageEtat(`${message}.`);
 
   // Reprend la sélection en cours (rechargement automatique) ou le dernier shader
@@ -539,11 +644,16 @@ function appliquerCatalogue(catalogue, { conserverSelection = false } = {}) {
 async function selectionner(entree) {
   const catalogue = etat.catalogue;
   const jeton = ++etat.jetonSelection;
+  etat.entreeSelectionnee = entree;
+  etat.normaliseActive = null;
+  el.exporter.disabled = true;
   etat.inspecteur.definirSelection(entree.cle);
   arreterSonSelection();
 
   etat.inspecteur.viderDetail();
   etat.inspecteur.afficherEnTete(entree);
+  definirDisponibiliteTransport(false);
+  el.transportEtat.textContent = '';
 
   if (entree.erreur !== null) {
     etat.inspecteur.afficherAlerte(entree.erreur);
@@ -562,12 +672,14 @@ async function selectionner(entree) {
 
   const normalise = rendreSelection(shader);
   if (normalise !== undefined) {
+    el.exporter.disabled = false;
+    definirDisponibiliteTransport(true);
     chargerMediasSelection(normalise, catalogue, jeton);
     preparerSonSelection(normalise, jeton);
   }
 
   const alertes = [];
-  if (entree.perime) alertes.push('Le fichier a changé depuis la génération du manifeste : relancer « node tools/build-manifest.mjs ».');
+  if (entree.perime) alertes.push(traduire('catalog.stale'));
   alertes.push(...entree.avertissements);
   if (alertes.length > 0) etat.inspecteur.afficherAlerte(alertes.join(' '));
 }
@@ -634,14 +746,14 @@ async function demarrerAvecManifeste() {
   const jeton = ++etat.jetonCatalogue;
   arreterSondageCatalogue();
   etat.dossierNatifHandle = null;
-  etat.inspecteur.definirMessageEtat('Chargement du catalogue…');
+  etat.inspecteur.definirMessageEtat(traduire('catalog.loading'));
   try {
     const catalogue = await chargerManifeste();
     if (jeton === etat.jetonCatalogue) { appliquerCatalogue(catalogue); demarrerSondageCatalogue(); }
   } catch (e) {
     if (jeton !== etat.jetonCatalogue) return;
     const detail = e instanceof Error ? e.message : String(e);
-    etat.inspecteur.definirMessageEtat(`Catalogue indisponible : ${detail} Ouvrez le dossier shaders/ ou déposez vos fichiers .json.`);
+    etat.inspecteur.definirMessageEtat(traduire('catalog.unavailable', { message: detail }));
   }
 }
 
@@ -649,18 +761,18 @@ async function chargerFichiersLocaux(fichiers, source, handleDossierNatif = null
   const jeton = ++etat.jetonCatalogue;
   arreterSondageCatalogue();
   etat.dossierNatifHandle = handleDossierNatif;
-  etat.inspecteur.definirMessageEtat('Lecture des fichiers…');
+  etat.inspecteur.definirMessageEtat(traduire('catalog.readingFiles'));
   try {
     const catalogue = await catalogueDepuisFichiers(fichiers, {
       source,
       surProgres: (fait, total) => {
-        if (jeton === etat.jetonCatalogue) etat.inspecteur.definirMessageEtat(`Lecture des fichiers… ${fait}/${total}`);
+        if (jeton === etat.jetonCatalogue) etat.inspecteur.definirMessageEtat(traduire('catalog.readProgress', { done: fait, total }));
       },
     });
     if (jeton === etat.jetonCatalogue) { appliquerCatalogue(catalogue); demarrerSondageCatalogue(); }
   } catch (e) {
     if (jeton === etat.jetonCatalogue) {
-      etat.inspecteur.definirMessageEtat(`Lecture impossible : ${e instanceof Error ? e.message : String(e)}`);
+      etat.inspecteur.definirMessageEtat(traduire('catalog.unreadable', { message: e instanceof Error ? e.message : String(e) }));
     }
   }
 }
@@ -673,10 +785,247 @@ async function ouvrirDossier() {
       return;
     } catch (e) {
       // Contexte non sécurisé ou accès refusé : repli sur le sélecteur classique.
-      etat.inspecteur.definirMessageEtat(`Sélecteur natif indisponible (${e instanceof Error ? e.message : String(e)}), repli sur le sélecteur classique.`);
+      etat.inspecteur.definirMessageEtat(traduire('catalog.nativePickerFallback', { message: e instanceof Error ? e.message : String(e) }));
     }
   }
   el.entreeDossier.click();
+}
+
+// ---------------------------------------------------------------------------
+// Export vidéo (Phase 9)
+// ---------------------------------------------------------------------------
+
+function definirInfoAudioExport() {
+  const formatWebm = el.exportFormat.value === FORMAT_EXPORT.WEBM;
+  const sonDisponible = etat.normaliseActive?.son !== null && etat.normaliseActive?.son !== undefined;
+  const codecsAudio = etat.codecsAudioExport?.[el.exportFormat.value] ?? [];
+  const codecDisponible = codecsAudio.length > 0;
+  el.exportAudio.disabled = !sonDisponible || !codecDisponible || etat.exportEnCours;
+  if (!sonDisponible) {
+    el.exportAudio.checked = false;
+    el.exportAudioInfo.hidden = false;
+    el.exportAudioInfo.textContent = traduire('export.audioNone');
+  } else if (!codecDisponible) {
+    el.exportAudio.checked = false;
+    el.exportAudioInfo.hidden = false;
+    el.exportAudioInfo.textContent = traduire('export.audioUnavailable', { codec: formatWebm ? 'Opus' : 'AAC' });
+  } else {
+    el.exportAudioInfo.hidden = !el.exportAudio.checked;
+    el.exportAudioInfo.textContent = el.exportAudio.checked
+      ? traduire('export.audioIncluded', { codec: formatWebm ? 'Opus' : 'AAC' })
+      : '';
+  }
+}
+
+async function actualiserCodecsAudioExport() {
+  const jeton = ++etat.jetonCodecsAudioExport;
+  const bitrateAudio = Number(el.exportBitrateAudio.value) * 1000;
+  etat.codecsAudioExport = null;
+  definirInfoAudioExport();
+  try {
+    const codecs = await new ExportVideo({ bitrateAudio }).supportAudio();
+    if (jeton !== etat.jetonCodecsAudioExport) return;
+    etat.codecsAudioExport = codecs;
+    definirInfoAudioExport();
+  } catch (erreur) {
+    if (jeton !== etat.jetonCodecsAudioExport) return;
+    etat.codecsAudioExport = { webm: [], mp4: [] };
+    definirInfoAudioExport();
+    el.exportEtat.textContent = traduire('export.audioCheckFailed', { message: erreur instanceof Error ? erreur.message : String(erreur) });
+  }
+}
+
+async function ouvrirDialogueExport() {
+  if (etat.normaliseActive === null || etat.moteur === null || etat.exportEnCours) return;
+  el.exportEtat.textContent = traduire('export.checking');
+  el.exportProgression.hidden = true;
+  el.exportAudio.checked = false;
+  etat.codecsAudioExport = null;
+  definirInfoAudioExport();
+  el.dialogueExport.showModal();
+  const testeur = new ExportVideo();
+  const [codecs] = await Promise.all([testeur.support(), actualiserCodecsAudioExport()]);
+  if (el.dialogueExport.open) {
+    const optionsMp4 = el.exportFormat.querySelector('option[value="mp4"]');
+    optionsMp4.disabled = codecs.mp4.length === 0;
+    el.exportEtat.textContent = codecs.webm.length === 0
+      ? traduire('export.codecsNone')
+      : traduire('export.codecsAvailable', {
+        webm: codecs.webm.join(', '),
+        mp4: codecs.mp4.length > 0 ? ` ; MP4 : ${codecs.mp4.join(', ')}` : traduire('export.mp4Unavailable'),
+      });
+    definirInfoAudioExport();
+  }
+}
+
+function nomFichierExport() {
+  return fabriquerNomFichierExport(
+    etat.entreeSelectionnee?.titre ?? etat.entreeSelectionnee?.nom,
+    el.exportFormat.value,
+  );
+}
+
+async function lancerExport(evenement) {
+  evenement.preventDefault();
+  if (etat.exportEnCours || etat.normaliseActive === null || etat.moteur === null) return;
+  if (!el.formulaireExport.reportValidity()) return;
+
+  const debut = Number(el.exportDebut.value);
+  const fin = Number(el.exportFin.value);
+  const duree = fin - debut;
+  if (!Number.isFinite(debut) || !Number.isFinite(fin) || debut < 0 || duree <= 0 || duree > 600) {
+    el.exportEtat.textContent = traduire('export.rangeInvalid');
+    return;
+  }
+
+  const [largeur, hauteur] = el.exportResolution.value.split('x').map(Number);
+  const fps = Number(el.exportFps.value);
+  const bitrate = Number(el.exportBitrateVideo.value) * 1000;
+  const bitrateAudio = Number(el.exportBitrateAudio.value) * 1000;
+  const format = el.exportFormat.value;
+  const exporteur = new ExportVideo({
+    format,
+    largeur,
+    hauteur,
+    fps,
+    debut,
+    duree,
+    bitrate,
+    bitrateAudio,
+  });
+  const moteur = etat.moteur;
+  const horloge = moteur.horloge;
+  const ancienEtatHorloge = { temps: horloge.temps, image: horloge.image, delta: horloge.deltaTemps, marche: horloge.enMarche };
+  const ancienneResolution = { largeur: moteur.canevas.width, hauteur: moteur.canevas.height };
+  const annulation = new AbortController();
+  let destinationExport = null;
+  etat.annulationExport = annulation;
+  etat.exportEnCours = true;
+  definirDisponibiliteTransport(false);
+  el.exportLancer.disabled = true;
+  el.exportAnnuler.hidden = false;
+  el.exportProgression.hidden = false;
+  el.exportProgression.value = 0;
+  el.exportEtat.textContent = traduire('export.prepare');
+  definirInfoAudioExport();
+
+  try {
+    const nomSuggere = nomFichierExport();
+    const promesseDestination = exporteur.ouvrirDestination({ suggestedName: nomSuggere });
+    destinationExport = await promesseDestination;
+    let renduAudio = null;
+    const inclureAudio = el.exportAudio.checked;
+    if (inclureAudio) {
+      const passeSon = etat.normaliseActive.son;
+      const code = convertirGles1VersGles3(passeSon.code);
+      const commun = etat.normaliseActive.commun !== null
+        ? convertirGles1VersGles3(etat.normaliseActive.commun.code)
+        : null;
+      renduAudio = async (_contexte, options) => rendreSonHorsLigne(
+        moteur.gl,
+        contexteAudio(),
+        code,
+        commun,
+        {
+          dureeSecondes: duree,
+          frequenceEchantillonnage: 48000,
+          surProgres: async (fait, total) => {
+            if (options.signal?.aborted) throw new DOMException('Export annulé.', 'AbortError');
+            el.exportEtat.textContent = traduire('export.audioRender', { percent: Math.round((fait / total) * 100) });
+            await new Promise((resolu) => requestAnimationFrame(resolu));
+          },
+        },
+      );
+    }
+
+    moteur.horloge.pause();
+    moteur.redimensionner(largeur, hauteur);
+    moteur.horloge.definirEtat(debut, Math.round(debut * fps), 1 / fps);
+    moteur.reinitialiserTampons();
+    const rendreFrame = async ({ frame, iTime, iTimeDelta }) => {
+      if (annulation.signal.aborted) throw new DOMException('Export annulé.', 'AbortError');
+      horloge.definirEtat(iTime, Math.round(debut * fps) + frame, iTimeDelta);
+      moteur.rendre();
+      return moteur.canevas;
+    };
+    const surProgres = (progres) => {
+      const etape = progres.etape ?? 'rendu';
+      const plages = {
+        rendu: [0, 0.55],
+        'encodage-video': [0.55, 0.78],
+        'encodage-audio': [0.78, 0.9],
+        muxage: [0.9, 0.95],
+        ecriture: [0.95, 1],
+      };
+      const [debutEtape, finEtape] = plages[etape] ?? [0, 0.55];
+      el.exportProgression.value = debutEtape + (finEtape - debutEtape) * (progres.progres ?? 0);
+      const reste = progres.tempsRestant === null || progres.tempsRestant === undefined
+        ? ''
+        : traduire('export.remaining', { seconds: Math.ceil(progres.tempsRestant / 1000) });
+      const etiquettes = {
+        rendu: traduire('export.render'),
+        'encodage-video': traduire('export.videoEncode'),
+        'encodage-audio': traduire('export.audioEncode'),
+        muxage: progres.progres === 1 ? traduire('export.muxDone') : traduire('export.mux'),
+        ecriture: traduire('export.write', { percent: Math.round((progres.progres ?? 0) * 100) }),
+      };
+      const fait = progres.octetsEcrits ?? progres.fait ?? progres.frame ?? 0;
+      const total = progres.octetsTotal ?? progres.total ?? 0;
+      const unite = traduire(etape === 'ecriture' ? 'export.unit.bytes' : 'export.unit.chunks');
+      el.exportEtat.textContent = traduire('export.progress', {
+        label: etiquettes[etape] ?? 'Export',
+        done: fait,
+        total,
+        unit: unite,
+        remaining: reste,
+      });
+    };
+    if (destinationExport !== null) {
+      try {
+        await exporteur.exporterVersDestination(rendreFrame, destinationExport, {
+          renderAudio: inclureAudio ? renduAudio : null,
+          signal: annulation.signal,
+          onProgress: surProgres,
+        });
+      } finally {
+        destinationExport = null;
+      }
+    } else {
+      const resultat = inclureAudio
+        ? await exporteur.exporterAvecAudio(rendreFrame, renduAudio, { signal: annulation.signal, onProgress: surProgres })
+        : await exporteur.exporter(rendreFrame, { signal: annulation.signal, onProgress: surProgres });
+      const blob = resultat?.video ?? resultat;
+      if (!exporteur.estValide(blob)) throw new Error(traduire('export.invalidBlob'));
+      await exporteur.enregistrerBlob(blob, { suggestedName: nomSuggere, signal: annulation.signal, onProgress: surProgres });
+    }
+    if (destinationExport !== null) {
+      destinationExport = null;
+    }
+    el.exportProgression.value = 1;
+    el.exportEtat.textContent = traduire('export.complete', { filename: nomFichierExport() });
+  } catch (erreur) {
+    if (erreur?.name === 'AbortError') el.exportEtat.textContent = traduire('export.cancelled');
+    else el.exportEtat.textContent = traduire('export.failed', { message: erreur instanceof Error ? erreur.message : String(erreur) });
+  } finally {
+    if (destinationExport !== null) {
+      try {
+        await exporteur.abandonnerDestination(destinationExport);
+      } catch (erreurNettoyage) {
+        el.exportEtat.textContent += traduire('export.closingFailure', { message: erreurNettoyage instanceof Error ? erreurNettoyage.message : String(erreurNettoyage) });
+      }
+    }
+    moteur.redimensionner(ancienneResolution.largeur, ancienneResolution.hauteur);
+    moteur.horloge.definirEtat(ancienEtatHorloge.temps, ancienEtatHorloge.image, ancienEtatHorloge.delta);
+    if (ancienEtatHorloge.marche) moteur.horloge.lire();
+    else moteur.horloge.pause();
+    moteur.reinitialiserTampons();
+    etat.exportEnCours = false;
+    etat.annulationExport = null;
+    el.exportLancer.disabled = false;
+    el.exportAnnuler.hidden = true;
+    definirDisponibiliteTransport(etat.normaliseActive !== null && etat.moteur !== null);
+    definirInfoAudioExport();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -715,7 +1064,7 @@ function brancherDepot() {
     collecterDepot(e.dataTransfer)
       .then((fichiers) => chargerFichiersLocaux(fichiers, SOURCES.FICHIERS))
       .catch((err) => {
-        etat.inspecteur.definirMessageEtat(`Dépôt impossible : ${err instanceof Error ? err.message : String(err)}`);
+        etat.inspecteur.definirMessageEtat(traduire('drop.failed', { message: err instanceof Error ? err.message : String(err) }));
       });
   });
 }
@@ -725,12 +1074,44 @@ function brancherDepot() {
 // ---------------------------------------------------------------------------
 
 function demarrer() {
+  initialiserLangue();
+  el.scene = document.querySelector('.scene');
   el.viewport = document.getElementById('viewport');
   el.depot = document.getElementById('depot');
   el.entreeDossier = document.getElementById('entree-dossier');
   el.entreeFichiers = document.getElementById('entree-fichiers');
+  el.exporter = document.getElementById('btn-exporter');
+  el.dialogueExport = document.getElementById('dialogue-export');
+  el.formulaireExport = document.getElementById('formulaire-export');
+  el.exportFormat = document.getElementById('export-format');
+  el.exportResolution = document.getElementById('export-resolution');
+  el.exportFps = document.getElementById('export-fps');
+  el.exportDebut = document.getElementById('export-debut');
+  el.exportFin = document.getElementById('export-fin');
+  el.exportBitrateVideo = document.getElementById('export-bitrate-video');
+  el.exportBitrateAudio = document.getElementById('export-bitrate-audio');
+  el.exportAudio = document.getElementById('export-audio');
+  el.exportAudioInfo = document.getElementById('export-audio-info');
+  el.exportProgression = document.getElementById('export-progression');
+  el.exportEtat = document.getElementById('export-etat');
+  el.exportLancer = document.getElementById('export-lancer');
+  el.exportAnnuler = document.getElementById('export-annuler');
+  el.transportLecture = document.getElementById('transport-lecture');
+  el.transportReset = document.getElementById('transport-reset');
+  el.transportPosition = document.getElementById('transport-position');
+  el.transportTemps = document.getElementById('transport-temps');
+  el.transportBoucle = document.getElementById('transport-boucle');
+  el.transportPleinEcran = document.getElementById('transport-plein-ecran');
+  el.transportCapture = document.getElementById('transport-capture');
+  el.transportEtat = document.getElementById('transport-etat');
+
+  etat.miniatures = new GenerateurMiniatures({
+    lireShader: (entree) => etat.catalogue.contenu(entree),
+  });
 
   etat.inspecteur = new Inspecteur(elementsDepuisDocument(), {
+    miniature: (entree) => etat.miniatures.canevasPour(entree),
+    surListeAffichee: (entrees) => etat.miniatures.demander(entrees),
     surSelection: (entree) => selectionner(entree),
     surBasculerSon: () => basculerLectureSon(),
     surChoixMusique: (src, nomPiste) => choisirPisteManuelle(src, nomPiste),
@@ -739,6 +1120,21 @@ function demarrer() {
   const erreurMoteur = demarrerMoteur();
   if (erreurMoteur !== null) etat.inspecteur.definirMessageEtat(erreurMoteur);
   else { brancherSouris(); brancherClavier(); demarrerBoucle(); }
+  definirDisponibiliteTransport(false);
+  brancherTransport();
+
+  const boutonLangue = document.getElementById('btn-langue');
+  const actualiserBoutonLangue = () => {
+    boutonLangue.textContent = langue() === 'fr' ? 'EN' : 'FR';
+    boutonLangue.setAttribute('aria-pressed', String(langue() === 'en'));
+  };
+  boutonLangue.addEventListener('click', () => definirLangue(langue() === 'fr' ? 'en' : 'fr'));
+  document.addEventListener('shaderview:langue', () => {
+    actualiserBoutonLangue();
+    etat.inspecteur?.definirLangue();
+    mettreAJourTransport();
+  });
+  actualiserBoutonLangue();
 
   // Chargement indépendant du catalogue de shaders : la bibliothèque audio reste
   // disponible même si le manifeste des shaders est inaccessible, et réciproquement.
@@ -746,6 +1142,24 @@ function demarrer() {
 
   document.getElementById('btn-dossier').addEventListener('click', ouvrirDossier);
   document.getElementById('btn-fichiers').addEventListener('click', () => el.entreeFichiers.click());
+  el.exporter.addEventListener('click', ouvrirDialogueExport);
+  el.exportFormat.addEventListener('change', definirInfoAudioExport);
+  el.exportAudio.addEventListener('change', definirInfoAudioExport);
+  el.exportBitrateAudio.addEventListener('change', actualiserCodecsAudioExport);
+  el.formulaireExport.addEventListener('submit', lancerExport);
+  el.exportAnnuler.addEventListener('click', () => etat.annulationExport?.abort());
+  for (const bouton of [document.getElementById('export-fermer'), document.getElementById('export-fermer-bas')]) {
+    bouton.addEventListener('click', () => {
+      if (etat.exportEnCours) etat.annulationExport?.abort();
+      else el.dialogueExport.close();
+    });
+  }
+  el.dialogueExport.addEventListener('cancel', (evenement) => {
+    if (etat.exportEnCours) {
+      evenement.preventDefault();
+      etat.annulationExport?.abort();
+    }
+  });
   for (const [entree, source] of [[el.entreeDossier, SOURCES.DOSSIER], [el.entreeFichiers, SOURCES.FICHIERS]]) {
     entree.addEventListener('change', () => {
       const fichiers = fichiersDepuisSelection(entree.files);

@@ -6,8 +6,9 @@
 // détail du shader sélectionné (métadonnées, onglets de code source par passe avec
 // coloration syntaxique GLSL locale, journal de compilation, entrées de canal,
 // statistiques de performance). La génération des miniatures (Phase 8) reste hors de
-// ce module : chaque élément de la liste réserve un emplacement (voir construireElement,
-// classe `element__miniature`) que thumbnails.js remplira sans toucher au reste du DOM.
+// ce module : chaque élément de la liste reçoit le canevas dédié que lui fournit le rappel
+// `miniature` (voir js/thumbnails.js) et signale la liste affichée par `surListeAffichee`
+// ; sans ces rappels, un emplacement vide (classe `element__miniature`) est réservé.
 //
 // Comme les autres modules, la logique de recherche/filtrage/tri et la coloration
 // syntaxique GLSL sont indépendantes du DOM et testables sans navigateur ; seule la
@@ -16,6 +17,8 @@
 // Tout le contenu issu des fichiers (titres, auteurs, messages d'erreur, code source)
 // est inséré avec `textContent` ou des nœuds construits explicitement : aucun texte
 // provenant d'un shader n'est interprété comme du HTML.
+
+import { langue, traduire } from './i18n.js';
 
 // ---------------------------------------------------------------------------
 // Recherche, filtres, tri (indépendants du DOM)
@@ -282,6 +285,11 @@ function pluriel(n, singulier, plurielForme) {
 }
 
 function formaterTaille(octets) {
+  if (langue() === 'en') {
+    if (octets < 1024) return `${octets} B`;
+    if (octets < 1024 * 1024) return `${(octets / 1024).toFixed(1)} KB`;
+    return `${(octets / (1024 * 1024)).toFixed(1)} MB`;
+  }
   if (octets < 1024) return `${octets} o`;
   if (octets < 1024 * 1024) return `${(octets / 1024).toFixed(1)} Ko`;
   return `${(octets / (1024 * 1024)).toFixed(1)} Mo`;
@@ -289,7 +297,7 @@ function formaterTaille(octets) {
 
 function formaterDate(horodatageUnix) {
   if (horodatageUnix === null) return null;
-  return new Date(horodatageUnix * 1000).toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' });
+  return new Date(horodatageUnix * 1000).toLocaleDateString(langue() === 'en' ? 'en' : 'fr-FR', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 function badge(texte, attention = false) {
@@ -297,7 +305,7 @@ function badge(texte, attention = false) {
 }
 
 /** Libellés des onglets de code pour les types de passe qui ne sont pas des buffers (nommés par leur lettre A à D). */
-const LIBELLES_PASSE = Object.freeze({ common: 'Common', image: 'Image', sound: 'Sound' });
+const LIBELLES_PASSE = Object.freeze({ common: 'inspector.pass.common', image: 'inspector.pass.image', sound: 'inspector.pass.sound' });
 
 /**
  * Construit la liste ordonnée des onglets (lettre/nom affiché, code, type) d'un
@@ -309,19 +317,19 @@ const LIBELLES_PASSE = Object.freeze({ common: 'Common', image: 'Image', sound: 
  */
 export function construireOnglets(normalise) {
   const onglets = [];
-  if (normalise.commun !== null) onglets.push({ id: 'common', libelle: LIBELLES_PASSE.common, passe: normalise.commun });
+  if (normalise.commun !== null) onglets.push({ id: 'common', libelle: traduire(LIBELLES_PASSE.common), passe: normalise.commun });
   for (const lettre of Object.keys(normalise.buffers).sort()) {
     onglets.push({ id: `buffer-${lettre}`, libelle: `Buffer ${lettre}`, passe: normalise.buffers[lettre] });
   }
   for (const nom of Object.keys(normalise.cubemaps)) onglets.push({ id: `cubemap-${nom}`, libelle: nom, passe: normalise.cubemaps[nom] });
-  if (normalise.son !== null) onglets.push({ id: 'sound', libelle: LIBELLES_PASSE.sound, passe: normalise.son });
-  onglets.push({ id: 'image', libelle: LIBELLES_PASSE.image, passe: normalise.image });
+  if (normalise.son !== null) onglets.push({ id: 'sound', libelle: traduire(LIBELLES_PASSE.sound), passe: normalise.son });
+  onglets.push({ id: 'image', libelle: traduire(LIBELLES_PASSE.image), passe: normalise.image });
   return onglets;
 }
 
 const LIBELLES_CANAL = Object.freeze({
-  texture: 'texture', cubemap: 'cubemap', volume: 'volume', buffer: 'buffer', keyboard: 'clavier',
-  mic: 'micro', music: 'musique', musicstream: 'flux musical', webcam: 'webcam', video: 'vidéo', misc: 'divers',
+  texture: 'texture', cubemap: 'cubemap', volume: 'volume', buffer: 'buffer', keyboard: 'inspector.channel.keyboard',
+  mic: 'inspector.channel.mic', music: 'inspector.channel.music', musicstream: 'inspector.channel.musicstream', webcam: 'webcam', video: 'inspector.channel.video', misc: 'inspector.channel.misc',
 });
 
 /**
@@ -338,17 +346,24 @@ export class Inspecteur {
    * @param {(entree: import('./catalog.js').Entree) => void} rappels.surSelection
    * @param {() => void} rappels.surBasculerSon
    * @param {(src: string, nomPiste: string) => void} rappels.surChoixMusique
+   * @param {(entree: import('./catalog.js').Entree) => HTMLElement} [rappels.miniature] fournit le canevas dédié à une entrée (toujours le même pour une entrée donnée, il survit aux reconstructions de la liste)
+   * @param {(entrees: import('./catalog.js').Entree[]) => void} [rappels.surListeAffichee] appelé après chaque reconstruction de la liste, avec les entrées dans l'ordre d'affichage
    */
-  constructor(elements, { surSelection, surBasculerSon, surChoixMusique }) {
+  constructor(elements, { surSelection, surBasculerSon, surChoixMusique, miniature, surListeAffichee }) {
     this.el = elements;
     this._surSelection = surSelection;
     this._surBasculerSon = surBasculerSon;
     this._surChoixMusique = surChoixMusique;
+    this._fournirMiniature = miniature ?? null;
+    this._surListeAffichee = surListeAffichee ?? null;
     this._entrees = [];
+    this._catalogueDefini = false;
     this._mediasDisponibles = new Set();
     this._selectionCle = null;
     this._onglets = [];
     this._ongletActifId = null;
+    this._entreeDetail = null;
+    this._normaliseDetail = null;
     this._preferences = lirePreferences();
 
     this.el.recherche.value = '';
@@ -419,11 +434,20 @@ export class Inspecteur {
    * @param {import('./catalog.js').Catalogue} catalogue
    */
   definirCatalogue(catalogue) {
+    this._catalogueDefini = true;
     this._entrees = catalogue.entrees;
     this._mediasDisponibles = catalogue.media;
     this._selectionCle = null;
     this.viderDetail();
     this._rafraichirListe();
+  }
+
+  definirLangue() {
+    if (!this._catalogueDefini) return;
+    this._rafraichirListe();
+    if (this._entreeDetail !== null) this.afficherEnTete(this._entreeDetail);
+    if (this._normaliseDetail !== null) this.afficherPasses(this._normaliseDetail);
+    this.definirEtatMarcheSon(this.el.btnSon.getAttribute('aria-pressed') === 'true');
   }
 
   _listeComposee() {
@@ -440,11 +464,14 @@ export class Inspecteur {
     this._sauvegarderPreferences();
     const entrees = this._listeComposee();
     this.el.liste.replaceChildren(...entrees.map((e) => this._construireElementListe(e)));
+    if (this._surListeAffichee !== null) this._surListeAffichee(entrees);
     const n = entrees.length;
     const total = this._entrees.length;
-    let message = n === total ? `${pluriel(n, 'entrée', 'entrées')}` : `${pluriel(n, 'entrée', 'entrées')} sur ${total}`;
+    let message = n === total
+      ? traduire('catalog.count', { count: n })
+      : traduire('catalog.countOf', { count: n, total });
     const enErreur = entrees.filter((e) => e.erreur !== null).length;
-    if (enErreur > 0) message += `, dont ${pluriel(enErreur, 'en erreur', 'en erreur')}`;
+    if (enErreur > 0) message += traduire('catalog.inError', { count: enErreur });
     this.el.etat.textContent = `${message}.`;
     this._marquerSelection();
   }
@@ -466,9 +493,9 @@ export class Inspecteur {
     bouton.id = `element-${entree.cle}`;
     bouton.setAttribute('role', 'option');
     bouton.dataset.cle = entree.cle;
-    // Emplacement réservé à la miniature animée (Phase 8, thumbnails.js) : ce module
-    // n'y dessine rien, seulement la structure que thumbnails.js remplira par la suite.
-    bouton.append(noeud('span', 'element__miniature'));
+    // Miniature : le canevas dédié à cette entrée, fourni (et rempli) par thumbnails.js ; ce
+    // module ne dessine rien lui-même. Sans fournisseur, un emplacement vide est réservé.
+    bouton.append(this._fournirMiniature !== null ? this._fournirMiniature(entree) : noeud('span', 'element__miniature'));
     const corps = noeud('div', 'element__corps');
     corps.append(noeud('span', 'element__titre', entree.titre), noeud('span', 'element__fichier', entree.fichier));
     if (entree.erreur !== null) {
@@ -479,10 +506,10 @@ export class Inspecteur {
         const nombre = entree.passes.filter((p) => p === type).length;
         badges.append(badge(nombre > 1 ? `${type} ×${nombre}` : type));
       }
-      if (entree.multipasse) badges.append(badge('multipasse'));
-      if (entree.son) badges.append(badge('son'));
-      if (aDesMediasManquants(entree, this._mediasDisponibles)) badges.append(badge('média manquant', true));
-      if (entree.avertissements.length > 0) badges.append(badge(pluriel(entree.avertissements.length, 'avertissement', 'avertissements'), true));
+      if (entree.multipasse) badges.append(badge(traduire('inspector.badge.multiPass')));
+      if (entree.son) badges.append(badge(traduire('inspector.badge.sound')));
+      if (aDesMediasManquants(entree, this._mediasDisponibles)) badges.append(badge(traduire('inspector.badge.missingMedia'), true));
+      if (entree.avertissements.length > 0) badges.append(badge(traduire('inspector.badge.warning', { count: entree.avertissements.length }), true));
       corps.append(badges);
     }
     bouton.append(corps);
@@ -546,6 +573,8 @@ export class Inspecteur {
     this.el.detailJournal.replaceChildren();
     this._onglets = [];
     this._ongletActifId = null;
+    this._entreeDetail = null;
+    this._normaliseDetail = null;
   }
 
   /**
@@ -554,13 +583,14 @@ export class Inspecteur {
    * @param {import('./catalog.js').Entree} entree
    */
   afficherEnTete(entree) {
+    this._entreeDetail = entree;
     this.el.detail.hidden = false;
     const date = formaterDate(entree.date);
     this.el.detailTitre.textContent = entree.titre;
     this.el.detailMeta.textContent = [
       entree.fichier,
       formaterTaille(entree.taille),
-      entree.auteur !== null ? `par ${entree.auteur}` : null,
+      entree.auteur !== null ? traduire('inspector.author', { author: entree.auteur }) : null,
       date,
     ].filter((v) => v !== null).join(' · ');
   }
@@ -582,6 +612,7 @@ export class Inspecteur {
    * @param {import('./parser.js').ShaderNormalise} normalise
    */
   afficherPasses(normalise) {
+    this._normaliseDetail = normalise;
     this._onglets = construireOnglets(normalise);
     const ongletsDom = this._onglets.map(({ id, libelle }) => {
       const bouton = noeud('button', 'onglet', libelle);
@@ -619,10 +650,13 @@ export class Inspecteur {
     this.el.detailCodeContenu.replaceChildren(...fragments);
 
     const canaux = entree.passe.entrees.map((e) => {
-      const detailsEchantillonnage = `${e.echantillonnage.filtre}, ${e.echantillonnage.repetition === 'repeat' ? 'répétition' : 'bord'}`;
-      return noeud('li', '', `iChannel${e.canal} — ${LIBELLES_CANAL[e.type] ?? e.type} (${detailsEchantillonnage})`);
+      const repetition = langue() === 'en'
+        ? (e.echantillonnage.repetition === 'repeat' ? 'repeat' : 'clamp')
+        : (e.echantillonnage.repetition === 'repeat' ? 'répétition' : 'bord');
+      const type = LIBELLES_CANAL[e.type] ? traduire(LIBELLES_CANAL[e.type]) : e.type;
+      return noeud('li', '', `iChannel${e.canal} — ${type} (${e.echantillonnage.filtre}, ${repetition})`);
     });
-    this.el.detailCanaux.replaceChildren(...(canaux.length > 0 ? canaux.map((c) => c) : [noeud('p', 'detail__canaux-vide', 'Aucune entrée de canal.')]));
+    this.el.detailCanaux.replaceChildren(...(canaux.length > 0 ? canaux.map((c) => c) : [noeud('p', 'detail__canaux-vide', traduire('inspector.noChannels'))]));
   }
 
   /**
@@ -634,7 +668,7 @@ export class Inspecteur {
    */
   afficherJournalCompilation(idOnglet, erreursLigne) {
     const lignes = erreursLigne.map((erreur) => {
-      const texte = erreur.ligne !== null ? `Ligne ${erreur.ligne} : ${erreur.message}` : erreur.message;
+      const texte = erreur.ligne !== null ? traduire('inspector.line', { line: erreur.ligne, message: erreur.message }) : erreur.message;
       const li = document.createElement('li');
       if (erreur.ligne !== null) {
         const bouton = noeud('button', 'journal__ligne', texte);
@@ -668,7 +702,8 @@ export class Inspecteur {
    */
   afficherStatsPerf({ fps, resolutionsBuffers }) {
     const buffers = resolutionsBuffers.map((b) => `${b.nom} ${b.largeur}×${b.hauteur}`).join(', ');
-    this.el.detailPerf.textContent = buffers.length > 0 ? `${Math.round(fps)} im/s · ${buffers}` : `${Math.round(fps)} im/s`;
+    const vitesse = `${Math.round(fps)} ${traduire('inspector.framesPerSecond')}`;
+    this.el.detailPerf.textContent = buffers.length > 0 ? `${vitesse} · ${buffers}` : vitesse;
   }
 
   // -------------------------------------------------------------------------
@@ -687,7 +722,7 @@ export class Inspecteur {
    */
   definirEtatSon(enMarche, etat) {
     this.el.btnSon.setAttribute('aria-pressed', String(enMarche));
-    this.el.btnSon.textContent = enMarche ? 'Mettre en pause' : 'Lire le son';
+    this.el.btnSon.textContent = traduire(enMarche ? 'sound.pause' : 'sound.play');
     this.el.detailSonEtat.textContent = etat;
   }
 
@@ -699,7 +734,7 @@ export class Inspecteur {
    */
   definirEtatMarcheSon(enMarche) {
     this.el.btnSon.setAttribute('aria-pressed', String(enMarche));
-    this.el.btnSon.textContent = enMarche ? 'Mettre en pause' : 'Lire le son';
+    this.el.btnSon.textContent = traduire(enMarche ? 'sound.pause' : 'sound.play');
   }
 
   // -------------------------------------------------------------------------
@@ -725,12 +760,12 @@ export class Inspecteur {
     const lignes = canaux.map(({ src, canal }) => {
       const ligne = noeud('div', 'musique__ligne');
       const idSelect = `choix-musique-${canal}`;
-      const etiquette = noeud('label', 'musique__libelle', `iChannel${canal} (musique manquante) :`);
+      const etiquette = noeud('label', 'musique__libelle', traduire('inspector.missingMusic', { channel: canal }));
       etiquette.htmlFor = idSelect;
       const select = document.createElement('select');
       select.id = idSelect;
       select.className = 'champ';
-      const optionVide = noeud('option', '', '— choisir une piste —');
+      const optionVide = noeud('option', '', traduire('inspector.chooseTrack'));
       optionVide.value = '';
       select.append(optionVide);
       for (const piste of pistes) select.append(noeud('option', '', piste));

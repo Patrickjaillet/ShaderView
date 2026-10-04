@@ -229,6 +229,33 @@ export function convertirGles1VersGles3(code) {
   return resultat;
 }
 
+function convertirPasse(passe) {
+  return { ...passe, code: convertirGles1VersGles3(passe.code) };
+}
+
+/**
+ * Convertit le code GLES 1.00 → 3.00 (voir convertirGles1VersGles3) de toutes les
+ * passes d'un shader normalisé (common, buffers, image, cubemaps), sans toucher aux
+ * autres champs (entrées, ordre de rendu déjà résolu par parser.js). Partagé par le
+ * viewport principal (js/app.js) et les miniatures (js/thumbnails.js) : les deux
+ * doivent compiler exactement le même code.
+ * @param {import('./parser.js').ShaderNormalise} normalise
+ * @returns {import('./parser.js').ShaderNormalise}
+ */
+export function convertirShaderNormalise(normalise) {
+  const buffers = {};
+  for (const [lettre, passe] of Object.entries(normalise.buffers)) buffers[lettre] = convertirPasse(passe);
+  const cubemaps = {};
+  for (const [nom, passe] of Object.entries(normalise.cubemaps)) cubemaps[nom] = convertirPasse(passe);
+  return {
+    ...normalise,
+    commun: normalise.commun !== null ? convertirPasse(normalise.commun) : null,
+    buffers,
+    cubemaps,
+    image: convertirPasse(normalise.image),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Correspondance des erreurs de compilation sur les numéros de ligne d'origine
 // ---------------------------------------------------------------------------
@@ -371,6 +398,21 @@ export class Horloge {
     this._deltaTemps = cible - this._temps;
     this._temps = cible;
     if (cible === 0) this._image = 0;
+  }
+
+  /**
+   * Fixe explicitement l'état de l'horloge pour un rendu déterministe hors ligne.
+   * @param {number} temps secondes depuis le début du shader
+   * @param {number} image index de frame
+   * @param {number} deltaTemps durée de frame
+   */
+  definirEtat(temps, image, deltaTemps) {
+    if (![temps, image, deltaTemps].every(Number.isFinite) || temps < 0 || image < 0 || deltaTemps < 0) {
+      throw new RangeError('État d’horloge invalide.');
+    }
+    this._temps = temps;
+    this._image = Math.floor(image);
+    this._deltaTemps = deltaTemps;
   }
 }
 

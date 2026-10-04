@@ -20,12 +20,84 @@
 <body>
   <header class="entete">
     <h1 class="entete__titre">ShaderView</h1>
+    <button type="button" id="btn-langue" class="bouton entete__langue" data-i18n-title="language.label" aria-label="Changer la langue" data-i18n-aria-label="language.label" aria-pressed="false">EN</button>
   </header>
 
   <main class="principal">
-    <section class="scene" aria-label="Visionneuse">
-      <canvas id="viewport" class="viewport" width="800" height="450" aria-label="Rendu du shader sélectionné"></canvas>
-      <noscript><p class="avertissement">ShaderView nécessite JavaScript et WebGL2 pour afficher les shaders.</p></noscript>
+    <section class="scene" aria-label="Visionneuse" data-i18n-aria-label="viewer.label">
+      <canvas id="viewport" class="viewport" width="800" height="450" aria-label="Rendu du shader sélectionné" data-i18n-aria-label="viewer.canvas"></canvas>
+      <div class="transport" role="group" aria-label="Commandes de lecture" data-i18n-aria-label="viewer.label">
+        <button type="button" id="transport-lecture" class="bouton" data-i18n="transport.play" disabled>Lire</button>
+        <button type="button" id="transport-reset" class="bouton" data-i18n="transport.reset" disabled>Remettre à zéro</button>
+        <label class="transport__position">
+          <input id="transport-position" type="range" min="0" max="60" step="0.01" value="0" aria-label="Position de lecture, en secondes" data-i18n-aria-label="transport.position" disabled>
+          <output id="transport-temps" for="transport-position">0.00 s / 60.00 s</output>
+        </label>
+        <label class="transport__boucle"><input type="checkbox" id="transport-boucle" disabled> <span data-i18n="transport.loop">Boucle (0–60 s)</span></label>
+        <button type="button" id="transport-plein-ecran" class="bouton" data-i18n="transport.fullscreen" disabled>Plein écran</button>
+        <button type="button" id="transport-capture" class="bouton" data-i18n="transport.capture" disabled>Capture PNG</button>
+        <span id="transport-etat" class="transport__etat" role="status" aria-live="polite"></span>
+      </div>
+      <div class="scene__outils">
+        <button type="button" id="btn-exporter" class="bouton" data-i18n="export.open" disabled>Exporter la vidéo…</button>
+      </div>
+      <dialog id="dialogue-export" class="dialogue-export" aria-labelledby="export-titre">
+        <form id="formulaire-export" class="export-formulaire">
+          <div class="export-formulaire__entete">
+            <h2 id="export-titre" data-i18n="export.title">Exporter le shader</h2>
+            <button type="button" id="export-fermer" class="bouton" aria-label="Fermer" data-i18n-aria-label="common.close">×</button>
+          </div>
+          <label class="export-champ">
+            <span data-i18n="export.format">Format</span>
+            <select id="export-format" class="champ">
+              <option value="webm">WebM (VP9 / Opus)</option>
+              <option value="mp4">MP4 (H.264 / AAC)</option>
+            </select>
+          </label>
+          <label class="export-champ">
+            <span data-i18n="export.resolution">Résolution</span>
+            <select id="export-resolution" class="champ">
+              <option value="800x450">800 × 450</option>
+              <option value="1280x720">1280 × 720</option>
+              <option value="1920x1080">1920 × 1080</option>
+            </select>
+          </label>
+          <label class="export-champ">
+            <span data-i18n="export.fps">Fréquence d’images</span>
+            <select id="export-fps" class="champ">
+              <option value="24" data-i18n="export.fps24">24 i/s</option>
+              <option value="30" selected data-i18n="export.fps30">30 i/s</option>
+              <option value="60" data-i18n="export.fps60">60 i/s</option>
+            </select>
+          </label>
+          <fieldset class="export-plage">
+            <legend data-i18n="export.range">Plage temporelle (secondes)</legend>
+            <label class="export-champ"><span data-i18n="export.start">Début</span><input id="export-debut" class="champ" type="number" min="0" step="0.1" value="0" required></label>
+            <label class="export-champ"><span data-i18n="export.end">Fin</span><input id="export-fin" class="champ" type="number" min="0.1" step="0.1" value="5" required></label>
+          </fieldset>
+          <label class="export-champ">
+            <span data-i18n="export.videoBitrate">Débit vidéo (kbit/s)</span>
+            <input id="export-bitrate-video" class="champ" type="number" min="100" max="100000" step="100" value="4000" required>
+          </label>
+          <label class="export-champ">
+            <span data-i18n="export.audioBitrate">Débit audio (kbit/s)</span>
+            <input id="export-bitrate-audio" class="champ" type="number" min="32" max="512" step="16" value="128" required>
+          </label>
+          <label class="export-option">
+            <input id="export-audio" type="checkbox">
+            <span data-i18n="export.includeAudio">Inclure la passe son du shader</span>
+          </label>
+          <p id="export-audio-info" class="export-info" hidden></p>
+          <progress id="export-progression" class="export-progression" max="1" value="0" hidden></progress>
+          <p id="export-etat" class="export-etat" role="status" aria-live="polite"></p>
+          <div class="export-formulaire__actions">
+            <button type="button" id="export-annuler" class="bouton" data-i18n="export.cancel" hidden>Annuler l’export</button>
+            <button type="button" id="export-fermer-bas" class="bouton" data-i18n="common.close">Fermer</button>
+            <button type="submit" id="export-lancer" class="bouton bouton--accent" data-i18n="export.startButton">Lancer l’export</button>
+          </div>
+        </form>
+      </dialog>
+      <noscript><p class="avertissement" data-i18n="drop.required">ShaderView nécessite JavaScript et WebGL2 pour afficher les shaders.</p></noscript>
       <section id="detail" class="detail" aria-live="polite" hidden>
         <div class="detail__entete">
           <h2 id="detail-titre" class="detail__titre"></h2>
@@ -33,58 +105,58 @@
         </div>
         <p id="detail-alerte" class="detail__alerte" hidden></p>
         <div id="detail-son" class="detail__son" hidden>
-          <button type="button" id="btn-son" class="bouton" aria-pressed="false">Lire le son</button>
+          <button type="button" id="btn-son" class="bouton" aria-pressed="false" data-i18n="sound.play">Lire le son</button>
           <span id="detail-son-etat" class="detail__son-etat" role="status"></span>
         </div>
         <div id="detail-musique" class="detail__musique" hidden></div>
         <p id="detail-perf" class="detail__perf" role="status"></p>
-        <div role="tablist" id="detail-onglets" class="detail__onglets" aria-label="Passes du shader"></div>
+        <div role="tablist" id="detail-onglets" class="detail__onglets" aria-label="Passes du shader" data-i18n-aria-label="passes.label"></div>
         <div id="detail-canaux" class="detail__canaux"></div>
         <pre id="detail-code" class="detail__code" tabindex="0"><code id="detail-code-contenu"></code></pre>
         <ul id="detail-journal" class="detail__journal"></ul>
       </section>
     </section>
 
-    <aside id="catalogue" class="catalogue" aria-label="Catalogue des shaders">
+    <aside id="catalogue" class="catalogue" aria-label="Catalogue des shaders" data-i18n-aria-label="catalog.title">
       <div class="catalogue__barre">
-        <h2 class="catalogue__titre">Shaders</h2>
-        <button type="button" id="btn-dossier" class="bouton">Ouvrir un dossier…</button>
-        <button type="button" id="btn-fichiers" class="bouton">Ouvrir des .json…</button>
+        <h2 class="catalogue__titre" data-i18n="catalog.title">Shaders</h2>
+        <button type="button" id="btn-dossier" class="bouton" data-i18n="catalog.openFolder">Ouvrir un dossier…</button>
+        <button type="button" id="btn-fichiers" class="bouton" data-i18n="catalog.openFiles">Ouvrir des .json…</button>
         <input type="file" id="entree-dossier" webkitdirectory multiple hidden>
         <input type="file" id="entree-fichiers" accept=".json,application/json" multiple hidden>
       </div>
       <div class="catalogue__recherche">
-        <label for="catalogue-recherche" class="etiquette-visible">Rechercher</label>
-        <input type="search" id="catalogue-recherche" class="champ" placeholder="Rechercher (titre, auteur, tag…)">
+        <label for="catalogue-recherche" class="etiquette-visible" data-i18n="catalog.search">Rechercher</label>
+        <input type="search" id="catalogue-recherche" class="champ" placeholder="Rechercher (titre, auteur, tag…)" data-i18n-placeholder="catalog.searchPlaceholder">
       </div>
-      <div class="catalogue__filtres" role="group" aria-label="Filtres">
-        <label><input type="checkbox" id="filtre-multipasse" value="multipasse"> Multipasse</label>
-        <label><input type="checkbox" id="filtre-son" value="son"> Avec son</label>
-        <label><input type="checkbox" id="filtre-erreurs" value="erreurs"> Erreurs</label>
-        <label><input type="checkbox" id="filtre-medias" value="medias_manquants"> Médias manquants</label>
+      <div class="catalogue__filtres" role="group" aria-label="Filtres" data-i18n-aria-label="catalog.filters">
+        <label><input type="checkbox" id="filtre-multipasse" value="multipasse"> <span data-i18n="catalog.multiPass">Multipasse</span></label>
+        <label><input type="checkbox" id="filtre-son" value="son"> <span data-i18n="catalog.sound">Avec son</span></label>
+        <label><input type="checkbox" id="filtre-erreurs" value="erreurs"> <span data-i18n="catalog.errors">Erreurs</span></label>
+        <label><input type="checkbox" id="filtre-medias" value="medias_manquants"> <span data-i18n="catalog.missingMedia">Médias manquants</span></label>
       </div>
       <div class="catalogue__tri">
-        <label for="catalogue-tri" class="etiquette-visible">Trier par</label>
+        <label for="catalogue-tri" class="etiquette-visible" data-i18n="catalog.sort">Trier par</label>
         <select id="catalogue-tri" class="champ">
-          <option value="nom">Nom de fichier</option>
-          <option value="titre">Titre</option>
-          <option value="auteur">Auteur</option>
-          <option value="taille">Taille</option>
-          <option value="date">Date</option>
+          <option value="nom" data-i18n="catalog.sortFilename">Nom de fichier</option>
+          <option value="titre" data-i18n="catalog.sortTitle">Titre</option>
+          <option value="auteur" data-i18n="catalog.sortAuthor">Auteur</option>
+          <option value="taille" data-i18n="catalog.sortSize">Taille</option>
+          <option value="date" data-i18n="catalog.sortDate">Date</option>
         </select>
-        <button type="button" id="btn-tri-sens" class="bouton" aria-pressed="false" title="Inverser le sens du tri">↓</button>
+        <button type="button" id="btn-tri-sens" class="bouton" aria-pressed="false" title="Inverser le sens du tri" data-i18n-title="catalog.reverseSort">↓</button>
       </div>
-      <p id="catalogue-etat" class="catalogue__etat" role="status">Chargement du catalogue…</p>
-      <ul id="catalogue-liste" class="catalogue__liste" role="listbox" aria-label="Liste des shaders"></ul>
-      <p class="catalogue__aide">Sans manifeste, ouvrez le dossier <code>shaders/</code> ou déposez ici vos fichiers <code>.json</code>.</p>
+      <p id="catalogue-etat" class="catalogue__etat" role="status" data-i18n="catalog.loading">Chargement du catalogue…</p>
+      <ul id="catalogue-liste" class="catalogue__liste" role="listbox" aria-label="Liste des shaders" data-i18n-aria-label="catalog.list"></ul>
+      <p class="catalogue__aide" data-i18n="catalog.help">Sans manifeste, ouvrez le dossier <code>shaders/</code> ou déposez ici vos fichiers <code>.json</code>.</p>
     </aside>
   </main>
 
-  <div id="depot" class="depot" hidden>Déposez un dossier ou des fichiers .json</div>
+  <div id="depot" class="depot" data-i18n="catalog.drop" hidden>Déposez un dossier ou des fichiers .json</div>
   <script type="module" src="js/app.js"></script>
 
   <footer class="pied">
-    <p>© 2026 SANDEFJORD / Patrick JAILLET — Distribué sous licence GPL-3.0-or-later</p>
+    <p data-i18n="footer.license">© 2026 SANDEFJORD / Patrick JAILLET — Distribué sous licence GPL-3.0-or-later</p>
     <p>
       <a href="mailto:sandefjord.development@proton.me">sandefjord.development@proton.me</a>
       ·

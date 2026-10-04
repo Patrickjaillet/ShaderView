@@ -16,6 +16,7 @@ import {
   construireDeclarationUniforms,
   construireFragmentShader,
   convertirGles1VersGles3,
+  convertirShaderNormalise,
   mapperErreurs,
   matriceRepereFace,
   resoudreSourcesCanaux,
@@ -202,6 +203,15 @@ test('Horloge : sauterA(0) remet le compteur d\'image à zéro', () => {
   h.sauterA(0);
   assert.equal(h.temps, 0);
   assert.equal(h.image, 0);
+});
+
+test('Horloge : definirEtat fixe précisément le temps et les uniforms d’export', () => {
+  const h = new Horloge();
+  h.definirEtat(3.5, 105, 1 / 30);
+  assert.equal(h.temps, 3.5);
+  assert.equal(h.image, 105);
+  assert.equal(h.deltaTemps, 1 / 30);
+  assert.throws(() => h.definirEtat(-1, 0, 1 / 30), RangeError);
 });
 
 // ---------------------------------------------------------------------------
@@ -462,4 +472,33 @@ test('resoudreSourcesCanaux : canal buffer dont la cible n\'existe pas (shader i
   const normalise = parserShader(shader);
   const source = resoudreSourcesCanaux(normalise.image, normalise)[0];
   assert.deepEqual(source, { genre: 'media', src: null, type: 'buffer', echantillonnage: normalise.image.entrees[0].echantillonnage });
+});
+
+// ---------------------------------------------------------------------------
+// convertirShaderNormalise
+// ---------------------------------------------------------------------------
+
+test('convertirShaderNormalise : convertit common, buffers, cubemaps et image, sans toucher au reste', () => {
+  const normalise = parserShader(shaderMultipasseAvecGraphe());
+  const ancien = 'vec4 f(sampler2D s, vec2 p) { return texture2D(s, p); }';
+  normalise.commun = { ...normalise.commun, code: ancien };
+  normalise.image = { ...normalise.image, code: ancien };
+  for (const lettre of Object.keys(normalise.buffers)) normalise.buffers[lettre] = { ...normalise.buffers[lettre], code: ancien };
+
+  const converti = convertirShaderNormalise(normalise);
+  const attendu = 'vec4 f(sampler2D s, vec2 p) { return texture(s, p); }';
+  assert.equal(converti.commun.code, attendu);
+  assert.equal(converti.image.code, attendu);
+  for (const lettre of Object.keys(normalise.buffers)) assert.equal(converti.buffers[lettre].code, attendu);
+  assert.deepEqual(converti.ordreBuffers, normalise.ordreBuffers);
+  assert.deepEqual(converti.image.entrees, normalise.image.entrees);
+  assert.equal(normalise.image.code, ancien, 'l\'original n\'est pas modifié');
+});
+
+test('convertirShaderNormalise : cubemaps convertis, common absent conservé à null', () => {
+  const normalise = parserShader(shaderCubemap());
+  normalise.cubemaps = Object.fromEntries(Object.entries(normalise.cubemaps).map(([nom, p]) => [nom, { ...p, code: 'x = textureCube(t, d);' }]));
+  const converti = convertirShaderNormalise(normalise);
+  for (const p of Object.values(converti.cubemaps)) assert.equal(p.code, 'x = texture(t, d);');
+  assert.equal(converti.commun, null);
 });
