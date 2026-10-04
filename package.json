@@ -1,0 +1,20 @@
+{
+  "name": "shaderview",
+  "version": "0.1.0",
+  "description": "Visionneuse hors-ligne de shaders Shadertoy au format JSON",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "author": "SANDEFJORD / Patrick JAILLET <sandefjord.development@proton.me>",
+  "homepage": "https://patrickjaillet.github.io/shaderview",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "manifeste": "node tools/build-manifest.mjs",
+    "manifeste:verifier": "node tools/build-manifest.mjs --check",
+    "en-tetes": "node tools/check-headers.mjs",
+    "favicon": "node tools/inline-favicon.mjs",
+    "test": "node --test \"tests/*.test.mjs\""
+  }
+}
