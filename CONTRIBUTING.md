@@ -15,6 +15,17 @@ Chaque fichier source (HTML, CSS, JS, MJS, SVG) commence par l'en-tête SPDX cor
 node tools/check-headers.mjs
 ```
 
+## Tests et manifeste
+
+Avant chaque commit :
+
+```sh
+node --test "tests/*.test.mjs"
+node tools/build-manifest.mjs --check
+```
+
+Toute modification de `shaders/` s'accompagne de la régénération de `shaders/manifest.json` dans le même commit.
+
 ## Messages de commit
 
 - Rédigés en français, au nominal ou à l'infinitif, sur une ligne de 72 caractères au plus.
