@@ -6,9 +6,8 @@
 // détail du shader sélectionné (métadonnées, onglets de code source par passe avec
 // coloration syntaxique GLSL locale, journal de compilation, entrées de canal,
 // statistiques de performance). La génération des miniatures (Phase 8) reste hors de
-// ce module : chaque élément de la liste reçoit le canevas dédié que lui fournit le rappel
-// `miniature` (voir js/thumbnails.js) et signale la liste affichée par `surListeAffichee`
-// ; sans ces rappels, un emplacement vide (classe `element__miniature`) est réservé.
+// ce module : chaque élément de la liste reçoit l'image dédiée que lui fournit le rappel
+// `miniature` (voir js/thumbnails.js) et signale la liste affichée par `surListeAffichee`.
 //
 // Comme les autres modules, la logique de recherche/filtrage/tri et la coloration
 // syntaxique GLSL sont indépendantes du DOM et testables sans navigateur ; seule la
@@ -346,7 +345,7 @@ export class Inspecteur {
    * @param {(entree: import('./catalog.js').Entree) => void} rappels.surSelection
    * @param {() => void} rappels.surBasculerSon
    * @param {(src: string, nomPiste: string) => void} rappels.surChoixMusique
-   * @param {(entree: import('./catalog.js').Entree) => HTMLElement} [rappels.miniature] fournit le canevas dédié à une entrée (toujours le même pour une entrée donnée, il survit aux reconstructions de la liste)
+   * @param {(entree: import('./catalog.js').Entree) => HTMLElement} [rappels.miniature] fournit l'image dédiée à une entrée (toujours la même pour une entrée donnée, elle survit aux reconstructions de la liste)
    * @param {(entrees: import('./catalog.js').Entree[]) => void} [rappels.surListeAffichee] appelé après chaque reconstruction de la liste, avec les entrées dans l'ordre d'affichage
    */
   constructor(elements, { surSelection, surBasculerSon, surChoixMusique, miniature, surListeAffichee }) {
@@ -493,9 +492,9 @@ export class Inspecteur {
     bouton.id = `element-${entree.cle}`;
     bouton.setAttribute('role', 'option');
     bouton.dataset.cle = entree.cle;
-    // Miniature : le canevas dédié à cette entrée, fourni (et rempli) par thumbnails.js ; ce
-    // module ne dessine rien lui-même. Sans fournisseur, un emplacement vide est réservé.
-    bouton.append(this._fournirMiniature !== null ? this._fournirMiniature(entree) : noeud('span', 'element__miniature'));
+    // Miniature : l'image dédiée à cette entrée est fournie (et remplie) par thumbnails.js ;
+    // ce module ne la dessine pas lui-même.
+    bouton.append(this._fournirMiniature !== null ? this._fournirMiniature(entree) : noeud('img', 'element__miniature'));
     const corps = noeud('div', 'element__corps');
     corps.append(noeud('span', 'element__titre', entree.titre), noeud('span', 'element__fichier', entree.fichier));
     if (entree.erreur !== null) {

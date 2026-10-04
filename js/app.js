@@ -44,7 +44,7 @@ const CLES_SOURCE = {
 const etat = {
   catalogue: null,
   inspecteur: null,
-  // Miniatures de la liste (js/thumbnails.js) : un moteur partagé, un canevas dédié par entrée.
+  // Miniatures statiques de la liste : un moteur partagé, une image PNG dédiée par entrée.
   miniatures: null,
   jetonCatalogue: 0,
   jetonSelection: 0,
@@ -1110,7 +1110,7 @@ function demarrer() {
   });
 
   etat.inspecteur = new Inspecteur(elementsDepuisDocument(), {
-    miniature: (entree) => etat.miniatures.canevasPour(entree),
+    miniature: (entree) => etat.miniatures.imagePour(entree),
     surListeAffichee: (entrees) => etat.miniatures.demander(entrees),
     surSelection: (entree) => selectionner(entree),
     surBasculerSon: () => basculerLectureSon(),

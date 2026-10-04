@@ -8,7 +8,7 @@ et les affiche dans un viewport de 800 × 450.
 ## Objectifs
 
 - Inspecteur listant tous les fichiers `.json` du dossier `shaders/`
-- Miniatures animées générées automatiquement à partir du shader lui-même
+- Miniatures images PNG statiques générées automatiquement à partir du shader lui-même
 - Rendu WebGL2 multipasse (buffers A à D, cubemaps, passe `common`) et passe son
 - Export vidéo déterministe WebM (VP9/AV1, Opus) et MP4 (H.264, AAC) via WebCodecs, selon les codecs proposés par le navigateur
 - Commandes de lecture, boucle sur une fenêtre de 60 secondes, plein écran et capture PNG

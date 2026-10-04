@@ -2,10 +2,8 @@
 // ShaderView — © 2026 SANDEFJORD / Patrick JAILLET
 // Distribué sous licence GPL-3.0-or-later
 
-// Miniatures de la liste du catalogue (Phase 8). Chaque entrée de la liste reçoit un
-// canevas 2D dédié de 160 × 90 pixels (voir `canevasPour`), rempli automatiquement à
-// partir du shader lui-même : lecture du contenu, normalisation, compilation, rendu d'une
-// image à basse résolution, puis copie dans le canevas de l'entrée.
+// Chaque entrée du catalogue reçoit une image PNG statique de 160 × 90 pixels,
+// rendue une fois à partir du shader lui-même.
 //
 // Le rendu passe par un unique moteur (`MoteurRendu`, donc un unique contexte WebGL2)
 // partagé par toutes les miniatures et traité une entrée à la fois : un contexte par
@@ -13,19 +11,16 @@
 // de celui du viewport principal (800 × 450), qui continue d'afficher le shader
 // sélectionné sans être perturbé par la génération.
 //
-// Les canevas survivent aux reconstructions de la liste (filtre, tri, recherche) : l'inspecteur
-// redemande le canevas d'une entrée à chaque reconstruction et reçoit toujours le même, déjà
-// rempli. Une entrée est identifiée par sa clé de catalogue et l'empreinte de son fichier : un
-// fichier modifié (rechargement automatique du catalogue) obtient donc une nouvelle miniature.
+// Les images survivent aux reconstructions de la liste (filtre, tri, recherche). Une entrée est
+// identifiée par sa clé et l'empreinte du fichier : une modification invalide son image.
 //
-// Périmètre actuel : une image fixe par entrée, à un temps de capture constant. L'animation,
-// le temps de capture choisi intelligemment, la file à budget, les médias externes et le
-// repli visuel pour les shaders en erreur relèvent des points suivants de la Phase 8.
+// Les miniatures ne sont jamais animées : compilation et rendu n'ont lieu qu'une fois par
+// empreinte de fichier et ne dépendent pas de la visibilité des éléments.
 //
 // Comme les autres modules, la logique (file, états, séquence de rendu) ne dépend ni du DOM ni
-// de WebGL : le moteur, la fabrique de canevas et le planificateur sont injectés, ce qui permet
+// de WebGL : le moteur, la fabrique d'image et le planificateur sont injectés, ce qui permet
 // de la tester sous Node. Les valeurs par défaut (voir `creerMoteurNavigateur`,
-// `creerCanevasNavigateur`, `planifierImageSuivante`) sont celles du navigateur.
+// `creerImageNavigateur`, `planifierImageSuivante`) sont celles du navigateur.
 
 import { ErreurParseur, parserShader } from './parser.js';
 import { ErreurCompilation, ErreurContexte, MoteurRendu, convertirShaderNormalise } from './renderer.js';
@@ -37,16 +32,14 @@ export const LARGEUR_MINIATURE = 160;
 export const HAUTEUR_MINIATURE = 90;
 
 /**
- * Temps (`iTime`, en secondes) auquel l'image d'une miniature est capturée. Valeur fixe
- * provisoire : à t = 0, de nombreux shaders affichent un écran noir ou un état initial peu
- * représentatif ; le choix intelligent du temps est un point distinct de la Phase 8.
+ * Temps (`iTime`, en secondes) de l'unique image statique générée par miniature.
  */
 export const TEMPS_CAPTURE_SECONDES = 1;
 
 /** Longueur maximale du message d'erreur conservé pour une miniature en échec. */
 const LONGUEUR_MAX_MESSAGE = 200;
 
-/** États d'une miniature (exposés dans `data-etat` du canevas, pour le style). */
+/** États d'une miniature (exposés dans `data-etat` de l'image). */
 export const ETAT_MINIATURE = Object.freeze({
   EN_ATTENTE: 'en-attente',
   EN_COURS: 'en-cours',
@@ -114,23 +107,27 @@ export function creerMoteurNavigateur() {
 }
 
 /**
- * Canevas 2D dédié à une miniature. Décoratif pour les technologies d'assistance : le titre de
+ * Élément image dédié à une miniature. Décoratif pour les technologies d'assistance : le titre de
  * l'entrée, juste à côté, porte déjà l'information.
- * @returns {HTMLCanvasElement}
+ * @returns {HTMLImageElement}
  */
-export function creerCanevasNavigateur() {
-  const canevas = document.createElement('canvas');
-  canevas.width = LARGEUR_MINIATURE;
-  canevas.height = HAUTEUR_MINIATURE;
-  canevas.className = 'element__miniature';
-  canevas.setAttribute('aria-hidden', 'true');
-  return canevas;
+export function creerImageNavigateur() {
+  const image = document.createElement('img');
+  image.width = LARGEUR_MINIATURE;
+  image.height = HAUTEUR_MINIATURE;
+  image.className = 'element__miniature';
+  image.alt = '';
+  image.setAttribute('aria-hidden', 'true');
+  return image;
 }
 
+const IMAGE_ERREUR = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90" viewBox="0 0 160 90"><rect width="160" height="90" fill="#0f172a"/><rect x="1" y="1" width="158" height="88" rx="4" fill="none" stroke="#334155"/><path d="M73 29h14v21H73zM76 55h8" fill="none" stroke="#f87171" stroke-width="3" stroke-linecap="round"/><text x="80" y="76" fill="#e6e9f2" font-family="sans-serif" font-size="10" text-anchor="middle">Image indisponible</text></svg>',
+ )}`;
+
 /**
- * Planifie une tâche à l'image d'affichage suivante : une miniature par image laisse au
- * navigateur le temps d'afficher et de traiter les événements entre deux compilations, et la
- * génération se met en pause d'elle-même quand l'onglet est masqué.
+ * Planifie la génération suivante sur une image d'affichage, afin de laisser le navigateur
+ * traiter les événements entre deux compilations.
  * @param {() => void} tache
  */
 export function planifierImageSuivante(tache) {
@@ -145,7 +142,7 @@ export function planifierImageSuivante(tache) {
 /**
  * @typedef {object} Fiche
  * @property {import('./catalog.js').Entree} entree
- * @property {HTMLCanvasElement} canevas canevas dédié, créé une fois et conservé
+ * @property {HTMLImageElement} image image dédiée, créée une fois et conservée
  * @property {string} etat une valeur de ETAT_MINIATURE
  * @property {string|null} message raison de l'échec, si `etat` vaut ERREUR
  */
@@ -161,20 +158,23 @@ export class GenerateurMiniatures {
    * @param {object} options
    * @param {(entree: import('./catalog.js').Entree) => Promise<object>} options.lireShader renvoie le shader brut (objet Shadertoy) d'une entrée, voir `Catalogue.contenu`
    * @param {() => { canevas: object, horloge: object, compiler: Function, reinitialiserTampons: Function, rendre: Function, detruire?: Function }} [options.creerMoteur] fabrique du moteur partagé, appelée au premier besoin
-   * @param {() => HTMLCanvasElement} [options.creerCanevas] fabrique des canevas dédiés
-   * @param {(tache: () => void) => void} [options.planifier] planifie la tâche suivante
-   * @param {number} [options.temps] temps de capture, en secondes
+   * @param {() => HTMLImageElement} [options.creerImage] fabrique les éléments image dédiés
+   * @param {(canevas: HTMLCanvasElement) => string} [options.encoderImage] sérialise l'image rendue en PNG
+   * @param {(tache: () => void) => void} [options.planifier] planifie la prochaine génération
+   * @param {number} [options.temps] temps de capture de l'image statique, en secondes
    */
   constructor({
     lireShader,
     creerMoteur = creerMoteurNavigateur,
-    creerCanevas = creerCanevasNavigateur,
+    creerImage = creerImageNavigateur,
+    encoderImage = (canevas) => canevas.toDataURL('image/png'),
     planifier = planifierImageSuivante,
     temps = TEMPS_CAPTURE_SECONDES,
   }) {
     this._lireShader = lireShader;
     this._creerMoteur = creerMoteur;
-    this._creerCanevas = creerCanevas;
+    this._creerImage = creerImage;
+    this._encoderImage = encoderImage;
     this._planifier = planifier;
     this._temps = temps;
     /** @type {Map<string, Fiche>} */
@@ -185,29 +185,8 @@ export class GenerateurMiniatures {
     this._contexteIndisponible = null;
     this._planifie = false;
     this._enCours = false;
-    this._observer = null;
-    this._visible = new Set();
-    this._survol = new Set();
-    this._selection = new Set();
-    this._rafAnimation = null;
-    this._derniereAnimation = new Map();
-    this._cacheRepos = new Map();
     // Incrémenté à chaque changement de catalogue : un résultat obtenu pour l'ancien est écarté.
     this._jeton = 0;
-    this._initialiserObservateur();
-  }
-
-  _initialiserObservateur() {
-    if (typeof globalThis.IntersectionObserver !== 'function') return;
-    this._observer = new IntersectionObserver((entrees) => {
-      for (const entree of entrees) {
-        const cle = entree.target.dataset.cle;
-        if (!cle) continue;
-        if (entree.isIntersecting) this._visible.add(cle);
-        else this._visible.delete(cle);
-      }
-      this._planifierAnimation();
-    }, { threshold: [0.05, 0.5, 1] });
   }
 
   // -------------------------------------------------------------------------
@@ -227,24 +206,18 @@ export class GenerateurMiniatures {
     for (const cle of [...this._fiches.keys()]) {
       if (!valides.has(cle)) this._fiches.delete(cle);
     }
-    this._cacheRepos.clear();
-    this._visible.clear();
-    this._survol.clear();
-    this._selection.clear();
-    this._derniereAnimation.clear();
   }
 
   /**
-   * Canevas dédié à une entrée, créé à la première demande puis toujours le même. Il porte son
+   * Image dédiée à une entrée, créée à la première demande puis toujours la même. Elle porte son
    * état dans `dataset.etat`. Une entrée déjà en erreur au catalogue (fichier illisible, format
    * non reconnu) n'a aucun shader à rendre : elle est marquée en erreur sans passer par la file.
    * @param {import('./catalog.js').Entree} entree
-   * @returns {HTMLCanvasElement}
+   * @returns {HTMLImageElement}
    */
-  canevasPour(entree) {
+  imagePour(entree) {
     const fiche = this._fiche(entree);
-    this._attacherInteractions(fiche);
-    return fiche.canevas;
+    return fiche.image;
   }
 
   /**
@@ -275,19 +248,9 @@ export class GenerateurMiniatures {
   detruire() {
     this._jeton += 1;
     this._file = [];
-    this._cacheRepos.clear();
-    this._visible.clear();
-    this._survol.clear();
-    this._selection.clear();
-    this._derniereAnimation.clear();
-    if (this._observer !== null) {
-      this._observer.disconnect();
-      this._observer = null;
-    }
     this._fiches.clear();
     if (this._moteur !== null && typeof this._moteur.detruire === 'function') this._moteur.detruire();
     this._moteur = null;
-    this._rafAnimation = null;
   }
 
   // -------------------------------------------------------------------------
@@ -298,7 +261,7 @@ export class GenerateurMiniatures {
     const cle = cleMiniature(entree);
     let fiche = this._fiches.get(cle);
     if (fiche === undefined) {
-      fiche = { entree, canevas: this._creerCanevas(), etat: ETAT_MINIATURE.EN_ATTENTE, message: null, normalise: null };
+      fiche = { entree, image: this._creerImage(), etat: ETAT_MINIATURE.EN_ATTENTE, message: null };
       this._fiches.set(cle, fiche);
       if (entree.erreur !== null) this._definirEtat(fiche, ETAT_MINIATURE.ERREUR, entree.erreur);
       else if (this._contexteIndisponible !== null) this._definirEtat(fiche, ETAT_MINIATURE.ERREUR, this._contexteIndisponible);
@@ -307,103 +270,12 @@ export class GenerateurMiniatures {
     return fiche;
   }
 
-  _attacherInteractions(fiche) {
-    const canevas = fiche.canevas;
-    if (typeof canevas.addEventListener !== 'function') return;
-    if (canevas.dataset.lie === 'true') return;
-    canevas.dataset.lie = 'true';
-    canevas.dataset.cle = cleMiniature(fiche.entree);
-    canevas.tabIndex = 0;
-    canevas.addEventListener('mouseenter', () => {
-      this._survol.add(cleMiniature(fiche.entree));
-      this._planifierAnimation();
-    });
-    canevas.addEventListener('mouseleave', () => {
-      this._survol.delete(cleMiniature(fiche.entree));
-      this._planifierAnimation();
-    });
-    canevas.addEventListener('focus', () => {
-      this._selection.add(cleMiniature(fiche.entree));
-      this._planifierAnimation();
-    });
-    canevas.addEventListener('blur', () => {
-      this._selection.delete(cleMiniature(fiche.entree));
-      this._planifierAnimation();
-    });
-    if (this._observer !== null) this._observer.observe(canevas);
-  }
-
   _definirEtat(fiche, etat, message) {
     fiche.etat = etat;
     fiche.message = message;
-    fiche.canevas.dataset.etat = etat;
-    fiche.canevas.title = etat === ETAT_MINIATURE.ERREUR && message !== null ? message : '';
-    if (etat === ETAT_MINIATURE.ERREUR) this._dessinerErreur(fiche.canevas, message);
-    if (etat === ETAT_MINIATURE.PRETE) this._planifierAnimation();
-  }
-
-  _dessinerErreur(canevas, message) {
-    const contexte = canevas.getContext('2d');
-    if (contexte === null || typeof contexte === 'undefined') return;
-    if (typeof contexte.clearRect !== 'function' || typeof contexte.fillRect !== 'function' || typeof contexte.strokeRect !== 'function' || typeof contexte.fillText !== 'function') return;
-    contexte.clearRect(0, 0, canevas.width, canevas.height);
-    contexte.fillStyle = '#0f172a';
-    contexte.fillRect(0, 0, canevas.width, canevas.height);
-    contexte.strokeStyle = '#334155';
-    contexte.strokeRect(1, 1, canevas.width - 2, canevas.height - 2);
-    contexte.fillStyle = '#f8fafc';
-    contexte.font = 'bold 11px sans-serif';
-    contexte.textAlign = 'center';
-    const lignes = [
-      'Miniature',
-      'indisponible',
-    ];
-    const detail = typeof message === 'string' && message.length > 0 ? message : 'Shader invalide';
-    const resum = detail.length > 40 ? `${detail.slice(0, 37)}…` : detail;
-    lignes.push(resum);
-    lignes.forEach((ligne, index) => {
-      const y = 30 + index * 18;
-      contexte.fillText(ligne, canevas.width / 2, y);
-    });
-  }
-
-  _planifierAnimation() {
-    const actifs = this._visible.size > 0 || this._survol.size > 0 || this._selection.size > 0;
-    if (!actifs || this._rafAnimation !== null) return;
-    this._rafAnimation = this._planifier(() => {
-      this._rafAnimation = null;
-      this._rafraichirAnimation();
-    });
-  }
-
-  _rafraichirAnimation() {
-    const touches = [...new Set([...this._visible, ...this._survol, ...this._selection])];
-    if (touches.length === 0) return;
-    const maintenant = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
-    for (const cle of touches) {
-      const fiche = this._fiches.get(cle);
-      if (fiche === undefined || fiche.etat !== ETAT_MINIATURE.PRETE || fiche.normalise === null) continue;
-      const derniere = this._derniereAnimation.get(cle) ?? -Infinity;
-      if (maintenant - derniere < 80) continue;
-      this._derniereAnimation.set(cle, maintenant);
-      const temps = this._temps + (maintenant / 1000) * (this._survol.has(cle) || this._selection.has(cle) ? 1.8 : 0.8);
-      try {
-        this._rendreDans(fiche, fiche.normalise, temps);
-      } catch {
-        // Le rendu animé est best-effort : si le moteur est sous pression, on garde la dernière image statique.
-      }
-    }
-    this._planifierAnimation();
-  }
-
-  _enregistrerCacheRepos(fiche) {
-    try {
-      if (typeof fiche.canevas.toDataURL === 'function') {
-        this._cacheRepos.set(cleMiniature(fiche.entree), fiche.canevas.toDataURL('image/png'));
-      }
-    } catch {
-      // Les environnements de test ne fournissent pas toujours un `toDataURL` réel.
-    }
+    fiche.image.dataset.etat = etat;
+    fiche.image.title = etat === ETAT_MINIATURE.ERREUR && message !== null ? message : '';
+    if (etat === ETAT_MINIATURE.ERREUR) fiche.image.src = IMAGE_ERREUR;
   }
 
   // -------------------------------------------------------------------------
@@ -452,7 +324,6 @@ export class GenerateurMiniatures {
         return;
       }
       const normalise = convertirShaderNormalise(parserShader(shader));
-      fiche.normalise = normalise;
       this._rendreDans(fiche, normalise, this._temps);
       this._definirEtat(fiche, ETAT_MINIATURE.PRETE, null);
     } catch (e) {
@@ -469,12 +340,10 @@ export class GenerateurMiniatures {
   }
 
   /**
-   * Compile le shader dans le moteur partagé, rend une image au temps de capture et la copie
-   * dans le canevas de la fiche. Aucune attente (`await`) entre le rendu et la copie : le tampon
-   * de dessin WebGL n'est garanti lisible que dans la tâche qui l'a rempli.
+   * Compile et rend une image au temps de capture, puis la sérialise en PNG dans l'élément image.
    * @param {Fiche} fiche
    * @param {import('./parser.js').ShaderNormalise} normalise shader déjà converti pour GLSL ES 3.00
-   * @param {number} [temps] seconde de capture, utile pour l'animation des miniatures visibles
+   * @param {number} [temps] instant de capture de l'image statique
    */
   _rendreDans(fiche, normalise, temps = this._temps) {
     if (this._moteur === null) this._moteur = this._creerMoteur();
@@ -484,11 +353,7 @@ export class GenerateurMiniatures {
     moteur.horloge.remettreAZero();
     moteur.horloge.sauterA(temps);
     moteur.rendre();
-    const contexte = fiche.canevas.getContext('2d');
-    if (contexte !== null && typeof contexte.drawImage === 'function') {
-      contexte.drawImage(moteur.canevas, 0, 0, LARGEUR_MINIATURE, HAUTEUR_MINIATURE);
-    }
-    this._enregistrerCacheRepos(fiche);
+    fiche.image.src = this._encoderImage(moteur.canevas);
   }
 
   /**

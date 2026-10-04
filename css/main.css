@@ -601,16 +601,17 @@ button.journal__ligne:focus-visible {
   cursor: pointer;
 }
 
-/* Canevas dédié 160 × 90 (js/thumbnails.js), affiché à 60 % pour rester net sur écran dense. */
+/* Image PNG statique 160 × 90 (js/thumbnails.js), affichée à 60 % pour rester nette sur écran dense. */
 .element__miniature {
   flex: 0 0 auto;
   width: 96px;
   height: 54px;
   border-radius: 3px;
   background: #000;
+  object-fit: cover;
 }
 
-/* Shader dont la miniature n'a pas pu être générée (raison en infobulle). */
+/* Shader dont l'image miniature n'a pas pu être générée (raison en infobulle). */
 .element__miniature[data-etat="erreur"] {
   opacity: 0.4;
 }

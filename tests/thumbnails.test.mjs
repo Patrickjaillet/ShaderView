@@ -25,12 +25,12 @@ function entree(cle, extra = {}) {
   return { cle, fichier: `${cle}.json`, empreinte: 'e1', erreur: null, ...extra };
 }
 
-/** Environnement complet : journal des appels, moteur partagé factice, canevas factices, planificateur manuel. */
+/** Environnement complet : journal, moteur partagé factice, images factices et planificateur manuel. */
 function creerEnvironnement({ shaders = {}, echecCompilation = {}, echecMoteur = null } = {}) {
   const journal = [];
   const taches = [];
-  const compteurs = { moteurs: 0, canevas: 0, lectures: 0 };
-  const canevasGl = { id: 'canevas-gl' };
+  const compteurs = { moteurs: 0, images: 0, lectures: 0 };
+  const canevasGl = { id: 'canevas-gl', toDataURL: () => 'data:image/png;base64,c3RhdGlj' };
 
   const creerMoteur = () => {
     compteurs.moteurs += 1;
@@ -52,10 +52,9 @@ function creerEnvironnement({ shaders = {}, echecCompilation = {}, echecMoteur =
     };
   };
 
-  const creerCanevas = () => {
-    compteurs.canevas += 1;
-    const contexte = { drawImage: (...args) => journal.push(`copie:${args.slice(1).join(',')}`) };
-    return { dataset: {}, title: '', getContext: (type) => (type === '2d' ? contexte : null) };
+  const creerImage = () => {
+    compteurs.images += 1;
+    return { dataset: {}, title: '', src: '', alt: '', width: LARGEUR_MINIATURE, height: HAUTEUR_MINIATURE };
   };
 
   const lireShader = async (e) => {
@@ -66,7 +65,7 @@ function creerEnvironnement({ shaders = {}, echecCompilation = {}, echecMoteur =
     return shader;
   };
 
-  const generateur = new GenerateurMiniatures({ lireShader, creerMoteur, creerCanevas, planifier: (t) => taches.push(t) });
+  const generateur = new GenerateurMiniatures({ lireShader, creerMoteur, creerImage, planifier: (t) => taches.push(t) });
 
   /** Exécute les tâches planifiées jusqu'à épuisement de la file. */
   async function vider() {
@@ -112,16 +111,16 @@ test('resumerErreurCompilation : sans erreur détaillée, repli sur le message g
 });
 
 // ---------------------------------------------------------------------------
-// Canevas dédiés
+// Images dédiées
 // ---------------------------------------------------------------------------
 
-test('canevasPour : un canevas dédié par entrée, toujours le même pour une même entrée', () => {
+test('imagePour : une image dédiée par entrée, toujours la même pour une même entrée', () => {
   const { generateur, compteurs } = creerEnvironnement();
-  const a = generateur.canevasPour(entree('a'));
-  const b = generateur.canevasPour(entree('b'));
+  const a = generateur.imagePour(entree('a'));
+  const b = generateur.imagePour(entree('b'));
   assert.notEqual(a, b);
-  assert.equal(generateur.canevasPour(entree('a')), a);
-  assert.equal(compteurs.canevas, 2);
+  assert.equal(generateur.imagePour(entree('a')), a);
+  assert.equal(compteurs.images, 2);
   assert.equal(a.dataset.etat, ETAT_MINIATURE.EN_ATTENTE);
 });
 
@@ -135,27 +134,29 @@ test('constantes : miniature 160 × 90 (16:9)', () => {
 // Génération
 // ---------------------------------------------------------------------------
 
-test('génération : chaque entrée est compilée, rendue au temps de capture puis copiée en 160 × 90', async () => {
+test('génération : chaque entrée produit une image PNG statique à 160 × 90', async () => {
   const env = creerEnvironnement({ shaders: { a: shaderNomme('A') } });
   const a = entree('a');
-  const canevas = env.generateur.canevasPour(a);
+  const image = env.generateur.imagePour(a);
   env.generateur.demander([a]);
   await env.vider();
 
-  assert.equal(canevas.dataset.etat, ETAT_MINIATURE.PRETE);
+  assert.equal(image.dataset.etat, ETAT_MINIATURE.PRETE);
+  assert.equal(image.src, 'data:image/png;base64,c3RhdGlj');
+  assert.equal(image.width, LARGEUR_MINIATURE);
+  assert.equal(image.height, HAUTEUR_MINIATURE);
   assert.deepEqual(env.journal, [
-    'lire:a', 'compiler:A', 'tampons', 'zero', `saut:${TEMPS_CAPTURE_SECONDES}`, 'rendre', 'copie:0,0,160,90',
+    'lire:a', 'compiler:A', 'tampons', 'zero', `saut:${TEMPS_CAPTURE_SECONDES}`, 'rendre',
   ]);
 });
 
-test('génération : la copie suit immédiatement le rendu (aucune étape entre les deux)', async () => {
+test('génération : une seule image est rendue et sérialisée pour chaque entrée', async () => {
   const env = creerEnvironnement({ shaders: { a: shaderNomme('A'), b: shaderNomme('B') } });
   const liste = [entree('a'), entree('b')];
   env.generateur.demander(liste);
   await env.vider();
-  for (let i = 0; i < env.journal.length; i += 1) {
-    if (env.journal[i] === 'rendre') assert.ok(env.journal[i + 1].startsWith('copie:'), 'copie juste après rendre');
-  }
+  assert.equal(env.journal.filter((j) => j === 'rendre').length, 2);
+  assert.ok(liste.every((e) => env.generateur.imagePour(e).src.startsWith('data:image/png')));
 });
 
 test('génération : un seul moteur partagé par toutes les miniatures', async () => {
@@ -166,9 +167,20 @@ test('génération : un seul moteur partagé par toutes les miniatures', async (
   assert.equal(env.journal.filter((j) => j === 'rendre').length, 3);
 });
 
+test('génération : les images statiques ne reçoivent aucun gestionnaire d’animation', async () => {
+  const env = creerEnvironnement({ shaders: { a: shaderNomme('A') } });
+  const image = env.generateur.imagePour(entree('a'));
+  env.generateur.demander([entree('a')]);
+  await env.vider();
+  const source = image.src;
+  assert.equal(typeof image.addEventListener, 'undefined');
+  assert.equal(image.src, source);
+  assert.equal(env.journal.filter((j) => j === 'rendre').length, 1);
+});
+
 test('génération : le moteur n\'est créé qu\'au premier besoin', () => {
   const env = creerEnvironnement();
-  env.generateur.canevasPour(entree('a'));
+  env.generateur.imagePour(entree('a'));
   assert.equal(env.compteurs.moteurs, 0);
 });
 
@@ -204,13 +216,13 @@ test('génération : le shader est converti en GLSL ES 3.00 avant compilation', 
   const generateur = new GenerateurMiniatures({
     lireShader: async () => shader,
     creerMoteur: () => ({
-      canevas: {},
+      canevas: { toDataURL: () => 'data:image/png;base64,c3RhdGlj' },
       horloge: { remettreAZero() {}, sauterA() {} },
       compiler: (n) => vues.push(n.image.code),
       reinitialiserTampons() {},
       rendre() {},
     }),
-    creerCanevas: () => ({ dataset: {}, getContext: () => ({ drawImage() {} }) }),
+    creerImage: () => ({ dataset: {}, title: '', src: '' }),
     planifier: (t) => setImmediate(t),
   });
   generateur.demander([entree('a')]);
@@ -227,11 +239,12 @@ test('génération : le shader est converti en GLSL ES 3.00 avant compilation', 
 test('échec : une entrée déjà en erreur au catalogue n\'est ni lue ni rendue', async () => {
   const env = creerEnvironnement();
   const e = entree('x', { erreur: 'JSON invalide.' });
-  const canevas = env.generateur.canevasPour(e);
+  const image = env.generateur.imagePour(e);
   env.generateur.demander([e]);
   await env.vider();
-  assert.equal(canevas.dataset.etat, ETAT_MINIATURE.ERREUR);
-  assert.equal(canevas.title, 'JSON invalide.');
+  assert.equal(image.dataset.etat, ETAT_MINIATURE.ERREUR);
+  assert.equal(image.title, 'JSON invalide.');
+  assert.match(image.src, /^data:image\/svg\+xml/);
   assert.equal(env.compteurs.lectures, 0);
   assert.equal(env.compteurs.moteurs, 0);
 });
@@ -245,7 +258,7 @@ test('échec : un shader qui ne compile pas n\'arrête pas les suivants', async 
   await env.vider();
   assert.deepEqual(env.generateur.etatDe(entree('a')), { etat: ETAT_MINIATURE.ERREUR, message: 'Compilation (image), ligne 3 : erreur de syntaxe' });
   assert.equal(env.generateur.etatDe(entree('b')).etat, ETAT_MINIATURE.PRETE);
-  assert.equal(env.journal.filter((j) => j.startsWith('copie:')).length, 1, 'aucune copie pour le shader fautif');
+  assert.equal(env.journal.filter((j) => j === 'rendre').length, 1, 'aucun rendu pour le shader fautif');
 });
 
 test('échec : shader invalide (sans passe image) consigné comme tel', async () => {
@@ -274,7 +287,7 @@ test('échec : WebGL2 absent met toutes les entrées en erreur, sans retenter le
   assert.equal(env.generateur.etatDe(entree('b')).etat, ETAT_MINIATURE.ERREUR);
   assert.equal(env.compteurs.moteurs, 1);
   // Une entrée découverte plus tard hérite de l'indisponibilité.
-  const tardive = env.generateur.canevasPour(entree('c'));
+  const tardive = env.generateur.imagePour(entree('c'));
   assert.equal(tardive.dataset.etat, ETAT_MINIATURE.ERREUR);
 });
 
@@ -284,16 +297,16 @@ test('échec : WebGL2 absent met toutes les entrées en erreur, sans retenter le
 
 test('catalogue : les miniatures des entrées conservées (même empreinte) sont gardées, les autres libérées', async () => {
   const env = creerEnvironnement({ shaders: { a: shaderNomme('A'), b: shaderNomme('B') } });
-  const canevasA = env.generateur.canevasPour(entree('a'));
-  env.generateur.canevasPour(entree('b'));
+  const imageA = env.generateur.imagePour(entree('a'));
+  env.generateur.imagePour(entree('b'));
   env.generateur.demander([entree('a'), entree('b')]);
   await env.vider();
 
   env.generateur.definirCatalogue({ entrees: [entree('a'), entree('b', { empreinte: 'e2' })] });
-  assert.equal(env.generateur.canevasPour(entree('a')), canevasA, 'a inchangée : même canevas, déjà prêt');
+  assert.equal(env.generateur.imagePour(entree('a')), imageA, 'a inchangée : même image, déjà prête');
   assert.equal(env.generateur.etatDe(entree('a')).etat, ETAT_MINIATURE.PRETE);
   assert.equal(env.generateur.etatDe(entree('b')), null, 'ancienne version de b libérée');
-  assert.equal(env.generateur.canevasPour(entree('b', { empreinte: 'e2' })).dataset.etat, ETAT_MINIATURE.EN_ATTENTE);
+  assert.equal(env.generateur.imagePour(entree('b', { empreinte: 'e2' })).dataset.etat, ETAT_MINIATURE.EN_ATTENTE);
 });
 
 test('catalogue : un résultat obtenu pour l\'ancien catalogue est écarté', async () => {
@@ -303,10 +316,10 @@ test('catalogue : un résultat obtenu pour l\'ancien catalogue est écarté', as
   const generateur = new GenerateurMiniatures({
     lireShader: async () => { await attente; return shaderNomme('A'); },
     creerMoteur: () => ({
-      canevas: {}, horloge: { remettreAZero() {}, sauterA() {} },
+      canevas: { toDataURL: () => 'data:image/png;base64,c3RhdGlj' }, horloge: { remettreAZero() {}, sauterA() {} },
       compiler: () => journal.push('compiler'), reinitialiserTampons() {}, rendre: () => journal.push('rendre'),
     }),
-    creerCanevas: () => ({ dataset: {}, getContext: () => ({ drawImage: () => journal.push('copie') }) }),
+    creerImage: () => ({ dataset: {}, title: '', src: '' }),
     planifier: (t) => setImmediate(t),
   });
   const a = entree('a');
