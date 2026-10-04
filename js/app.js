@@ -167,13 +167,17 @@ function mettreAJourStatsPerf(deltaSecondes) {
 
 function mettreAJourTransport() {
   if (etat.moteur === null || el.transportTemps === undefined) return;
+  const duree = dureeTransport();
   const temps = etat.moteur.horloge.temps;
+  el.transportPosition.max = String(duree);
+  const etiquetteBoucle = el.transportBoucle.nextElementSibling;
+  if (etiquetteBoucle !== null) etiquetteBoucle.textContent = traduire('transport.loopDuration', { duration: duree.toFixed(2) });
   el.transportTemps.value = traduire('transport.time', {
     current: temps.toFixed(2),
-    total: DUREE_TRANSPORT_SECONDES.toFixed(2),
+    total: duree.toFixed(2),
   });
   el.transportTemps.textContent = el.transportTemps.value;
-  if (document.activeElement !== el.transportPosition) el.transportPosition.value = String(Math.min(temps, DUREE_TRANSPORT_SECONDES));
+  if (document.activeElement !== el.transportPosition) el.transportPosition.value = String(Math.min(temps, duree));
   const enMarche = etat.moteur.horloge.enMarche;
   el.transportLecture.textContent = traduire(enMarche ? 'transport.pause' : 'transport.play');
   el.transportLecture.setAttribute('aria-pressed', String(enMarche));
@@ -184,7 +188,10 @@ function definirDisponibiliteTransport(disponible) {
     controle.disabled = !disponible;
   }
   if (!disponible) {
+    el.transportPosition.max = String(DUREE_TRANSPORT_SECONDES);
     el.transportPosition.value = '0';
+    const etiquetteBoucle = el.transportBoucle.nextElementSibling;
+    if (etiquetteBoucle !== null) etiquetteBoucle.textContent = traduire('transport.loopDuration', { duration: DUREE_TRANSPORT_SECONDES.toFixed(2) });
     el.transportTemps.value = traduire('transport.time', { current: '0.00', total: DUREE_TRANSPORT_SECONDES.toFixed(2) });
     el.transportTemps.textContent = el.transportTemps.value;
   } else {
@@ -193,13 +200,14 @@ function definirDisponibiliteTransport(disponible) {
 }
 
 function brancherTransport() {
+  let reprendreAudioApresRecherche = false;
   el.transportLecture.addEventListener('click', async () => {
     if (etat.moteur === null || etat.exportEnCours) return;
     const horloge = etat.moteur.horloge;
     if (horloge.enMarche) mettreEnPauseSynchronisee();
     else {
       const lecteurAudio = lecteurReferenceAudio();
-      const limite = Math.min(lecteurAudio?.duree ?? DUREE_TRANSPORT_SECONDES, DUREE_TRANSPORT_SECONDES);
+      const limite = dureeTransport();
       if (horloge.temps >= limite) {
         horloge.remettreAZero();
         positionnerLecteursAudio(0);
@@ -230,24 +238,32 @@ function brancherTransport() {
   });
   el.transportPosition.addEventListener('input', () => {
     if (etat.moteur === null || etat.exportEnCours) return;
-    const secondes = Math.min(Number(el.transportPosition.value), DUREE_TRANSPORT_SECONDES, lecteurReferenceAudio()?.duree ?? DUREE_TRANSPORT_SECONDES);
+    const secondes = Math.min(Number(el.transportPosition.value), dureeTransport());
     el.transportPosition.value = String(secondes);
     const horloge = etat.moteur.horloge;
     const lecteursAudio = lecteursAudioSelection();
     const audioEnMarche = lecteursAudio.some((lecteur) => lecteur.enMarche);
-    if (audioEnMarche) mettreEnPauseLecteursAudio();
-    positionnerLecteursAudio(secondes);
     if (audioEnMarche) {
-      void demarrerLectureSonSynchronisee().catch((e) => {
-        etat.inspecteur.definirEtatSon(false, traduire('audio.playbackFailed', { message: e instanceof Error ? e.message : String(e) }));
-      });
+      reprendreAudioApresRecherche = true;
+      mettreEnPauseLecteursAudio();
+      horloge.pause();
     }
+    positionnerLecteursAudio(secondes);
     horloge.definirEtat(secondes, Math.round(secondes * 30), 0);
     etat.moteur.reinitialiserTampons();
     if (lecteursAudio.length > 0) {
-      etat.inspecteur.definirEtatSon(audioEnMarche, traduire(audioEnMarche ? 'audio.synchronized' : 'audio.paused'));
+      etat.inspecteur.definirEtatSon(false, traduire('audio.paused'));
     }
     mettreAJourTransport();
+  });
+  el.transportPosition.addEventListener('change', async () => {
+    if (!reprendreAudioApresRecherche || etat.moteur === null || etat.exportEnCours) return;
+    reprendreAudioApresRecherche = false;
+    try {
+      await demarrerLectureSonSynchronisee();
+    } catch (e) {
+      etat.inspecteur.definirEtatSon(false, traduire('audio.playbackFailed', { message: e instanceof Error ? e.message : String(e) }));
+    }
   });
   el.transportPleinEcran.addEventListener('click', async () => {
     try {
@@ -308,7 +324,7 @@ function demarrerBoucle() {
         const lecteur = lecteurReferenceAudio();
         if (lecteur !== null) {
           if (!lecteur.enMarche || lecteur.position >= lecteur.duree) {
-            const limite = Math.min(DUREE_TRANSPORT_SECONDES, lecteur.duree);
+            const limite = Math.min(dureeTransport(), lecteur.duree);
             if (el.transportBoucle?.checked) {
               mettreEnPauseLecteursAudio();
               positionnerLecteursAudio(0);
@@ -327,7 +343,7 @@ function demarrerBoucle() {
         } else {
           horloge.avancer(deltaSecondes);
         }
-        if (horloge.enMarche && horloge.temps >= DUREE_TRANSPORT_SECONDES) {
+        if (horloge.enMarche && horloge.temps >= dureeTransport()) {
           if (el.transportBoucle?.checked) {
             mettreEnPauseLecteursAudio();
             positionnerLecteursAudio(0);
@@ -336,7 +352,8 @@ function demarrerBoucle() {
             if (lecteursAudioSelection().length > 0) void demarrerLectureSonSynchronisee();
           } else {
             mettreEnPauseLecteursAudio();
-            horloge.definirEtat(DUREE_TRANSPORT_SECONDES, Math.round(DUREE_TRANSPORT_SECONDES * 30), 0);
+            const duree = dureeTransport();
+            horloge.definirEtat(duree, Math.round(duree * 30), 0);
             horloge.pause();
           }
         }
@@ -501,7 +518,11 @@ function lecteursAudioSelection() {
 }
 
 function lecteurReferenceAudio() {
-  return etat.lecteurSon ?? etat.visualiseursMusique.values().next().value?.lecteur ?? null;
+  return etat.visualiseursMusique.values().next().value?.lecteur ?? etat.lecteurSon;
+}
+
+function dureeTransport() {
+  return etat.visualiseursMusique.values().next().value?.lecteur.duree ?? DUREE_TRANSPORT_SECONDES;
 }
 
 function mettreEnPauseLecteursAudio() {
@@ -522,6 +543,7 @@ async function demarrerAudioApresPreparation(activationAudio, { repartirAZero = 
       etat.moteur.reinitialiserTampons();
     }
   }
+  mettreAJourTransport();
   return demarrerLectureSonSynchronisee();
 }
 
@@ -758,6 +780,7 @@ async function choisirPisteManuelle(src, nomPiste) {
     if (jeton !== etat.jetonSelection) return;
     definirLecteurMusique(src, tampon);
     etat.inspecteur.afficherControleSon();
+    mettreAJourTransport();
     if (await demarrerAudioApresPreparation(activationAudio, { repartirAZero: true })) {
       etat.inspecteur.definirEtatChoixMusique(src, traduire('music.playing', { name: nomPiste }));
     } else {
@@ -850,6 +873,7 @@ async function selectionner(entree) {
     if (normalise.son === null) definirDisponibiliteTransport(true);
     await chargerMediasSelection(normalise, catalogue, jeton);
     if (jeton !== etat.jetonSelection) return;
+    mettreAJourTransport();
     if (normalise.son === null && lecteursAudioSelection().length > 0) {
       etat.inspecteur.afficherControleSon();
       if (!(await demarrerAudioApresPreparation(activationAudio))) {

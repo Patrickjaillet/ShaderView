@@ -109,6 +109,7 @@ export function calculerFenetreTrame(positionSecondes, frequenceEchantillonnage,
 
 /** Nombre d'échantillons analysés par trame FFT, et largeur de la texture visualiseur. */
 export const TAILLE_FFT = 512;
+const GAIN_SPECTRE = 16;
 
 /**
  * Transformée de Fourier rapide (radix-2, itérative, en place) d'un signal réel
@@ -168,7 +169,10 @@ export function appliquerFenetreHann(signal) {
 /**
  * Calcule le spectre (magnitude) d'une trame de `TAILLE_FFT` échantillons, fenêtrée
  * puis transformée. Seule la première moitié du spectre est renvoyée (l'autre est le
- * symétrique conjugué pour un signal réel, sans information supplémentaire).
+ * symétrique conjugué pour un signal réel, sans information supplémentaire). Le gain
+ * et la racine carrée compensent la faible amplitude des bins musicaux, afin que les
+ * valeurs restent exploitables par les shaders Shadertoy qui modulent souvent leur
+ * géométrie avec `pow(spectrum, n)`.
  * @param {Float32Array} trame longueur TAILLE_FFT (copiée, non modifiée)
  * @returns {Float32Array} longueur TAILLE_FFT / 2, magnitude normalisée à [0, 1]
  */
@@ -180,7 +184,8 @@ export function calculerSpectre(trame) {
   const spectre = new Float32Array(reel.length / 2);
   const normalisation = 2 / reel.length;
   for (let i = 0; i < spectre.length; i += 1) {
-    spectre[i] = Math.min(1, Math.hypot(reel[i], imag[i]) * normalisation);
+    const magnitude = Math.hypot(reel[i], imag[i]) * normalisation;
+    spectre[i] = Math.min(1, Math.sqrt(magnitude * GAIN_SPECTRE));
   }
   return spectre;
 }

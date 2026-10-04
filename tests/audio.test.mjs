@@ -228,6 +228,14 @@ test('calculerSpectre : silence produit un spectre quasi nul', () => {
   assert.ok(spectre.every((v) => v < 1e-3));
 });
 
+test('calculerSpectre : amplifie les bins musicaux faibles pour garder une réponse visible', () => {
+  const rang = 20;
+  const trame = Float32Array.from({ length: TAILLE_FFT }, (_, i) => 0.02 * Math.sin((2 * Math.PI * rang * i) / TAILLE_FFT));
+  const spectre = calculerSpectre(trame);
+  assert.ok(spectre[rang] > 0.3, `amplitude spectrale obtenue : ${spectre[rang]}`);
+  assert.ok(spectre.every((v) => v >= 0 && v <= 1));
+});
+
 test('construireTextureVisualiseur : dimensions 512 × 2 RGBA, alpha opaque', () => {
   const trame = new Float32Array(TAILLE_FFT);
   const octets = construireTextureVisualiseur(trame);

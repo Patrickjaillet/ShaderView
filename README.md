@@ -11,7 +11,7 @@ et les affiche dans un viewport de 800 × 450.
 - Miniatures images PNG statiques générées automatiquement à partir du shader lui-même
 - Rendu WebGL2 multipasse (buffers A à D, cubemaps, passe `common`), passe son et lecture synchronisée des pistes locales `music`/`musicstream` (dont MP3 décodables par le navigateur)
 - Export vidéo déterministe WebM (VP9/AV1, Opus) et MP4 (H.264, AAC) via WebCodecs, selon les codecs proposés par le navigateur
-- Commandes de lecture, boucle sur une fenêtre de 60 secondes, plein écran et capture PNG
+- Commandes de lecture, boucle sur 60 secondes (ou sur la durée du MP3 associé), plein écran et capture PNG
 - Interface en français par défaut, avec bascule anglais/français mémorisée localement
 - Aucune requête réseau à l'exécution
 
