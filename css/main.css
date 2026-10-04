@@ -1,0 +1,92 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * ShaderView — © 2026 SANDEFJORD / Patrick JAILLET
+ * Distribué sous licence GPL-3.0-or-later
+ */
+
+:root {
+  color-scheme: dark;
+  --fond: #0b0f1a;
+  --fond-surface: #121829;
+  --bordure: #25304a;
+  --texte: #e6e9f2;
+  --texte-discret: #8d97b3;
+  --accent: #ec4899;
+  --police: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--fond);
+  color: var(--texte);
+  font-family: var(--police);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--accent);
+}
+
+.entete {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--bordure);
+  background: var(--fond-surface);
+}
+
+.entete__titre {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.principal {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+/* Viewport de rendu fixe 800 × 450 (16:9) : mise à l'échelle par CSS uniquement. */
+.viewport {
+  display: block;
+  width: min(100%, 800px);
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 1px solid var(--bordure);
+  border-radius: 6px;
+}
+
+.avertissement {
+  margin: 1rem 0 0;
+  color: var(--texte-discret);
+}
+
+.pied {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--bordure);
+  background: var(--fond-surface);
+  color: var(--texte-discret);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.pied p {
+  margin: 0.15rem 0;
+}

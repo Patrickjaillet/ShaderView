@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  ShaderView — © 2026 SANDEFJORD / Patrick JAILLET
+  Distribué sous licence GPL-3.0-or-later
+-->
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <title>ShaderView</title>
+  <meta name="description" content="ShaderView : visionneuse hors-ligne de shaders Shadertoy au format JSON, avec inspecteur, miniatures animées, multipasse, son et export vidéo.">
+  <meta name="author" content="SANDEFJORD / Patrick JAILLET">
+  <!-- favicon:début -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='64' height='64'%3E%3Cdefs%3E%3ClinearGradient id='plasma' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237c3aed'/%3E%3Cstop offset='0.55' stop-color='%23ec4899'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='%230b0f1a'/%3E%3Crect x='6' y='10' width='52' height='44' rx='8' fill='url(%23plasma)'/%3E%3Cpath d='M6 38C16 28 24 48 34 38S50 28 58 36V46a8 8 0 0 1-8 8H14a8 8 0 0 1-8-8Z' fill='%230b0f1a' opacity='0.28'/%3E%3Cpath d='M26 21L45 32L26 43Z' fill='%23ffffff'/%3E%3C/svg%3E">
+  <!-- favicon:fin -->
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+  <header class="entete">
+    <h1 class="entete__titre">ShaderView</h1>
+  </header>
+
+  <main class="principal">
+    <canvas id="viewport" class="viewport" width="800" height="450" aria-label="Rendu du shader sélectionné"></canvas>
+    <noscript><p class="avertissement">ShaderView nécessite JavaScript et WebGL2 pour afficher les shaders.</p></noscript>
+  </main>
+
+  <footer class="pied">
+    <p>© 2026 SANDEFJORD / Patrick JAILLET — Distribué sous licence GPL-3.0-or-later</p>
+    <p>
+      <a href="mailto:sandefjord.development@proton.me">sandefjord.development@proton.me</a>
+      ·
+      <a href="https://patrickjaillet.github.io/shaderview" rel="noopener">patrickjaillet.github.io/shaderview</a>
+    </p>
+  </footer>
+</body>
+</html>

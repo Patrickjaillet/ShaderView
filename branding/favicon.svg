@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  ShaderView — © 2026 SANDEFJORD / Patrick JAILLET
+  Distribué sous licence GPL-3.0-or-later
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="plasma" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c3aed"/>
+      <stop offset="0.55" stop-color="#ec4899"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0b0f1a"/>
+  <rect x="6" y="10" width="52" height="44" rx="8" fill="url(#plasma)"/>
+  <path d="M6 38C16 28 24 48 34 38S50 28 58 36V46a8 8 0 0 1-8 8H14a8 8 0 0 1-8-8Z" fill="#0b0f1a" opacity="0.28"/>
+  <path d="M26 21L45 32L26 43Z" fill="#ffffff"/>
+</svg>
