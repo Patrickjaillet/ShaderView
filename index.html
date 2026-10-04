@@ -23,9 +23,33 @@
   </header>
 
   <main class="principal">
-    <canvas id="viewport" class="viewport" width="800" height="450" aria-label="Rendu du shader sélectionné"></canvas>
-    <noscript><p class="avertissement">ShaderView nécessite JavaScript et WebGL2 pour afficher les shaders.</p></noscript>
+    <section class="scene" aria-label="Visionneuse">
+      <canvas id="viewport" class="viewport" width="800" height="450" aria-label="Rendu du shader sélectionné"></canvas>
+      <noscript><p class="avertissement">ShaderView nécessite JavaScript et WebGL2 pour afficher les shaders.</p></noscript>
+      <section id="detail" class="detail" aria-live="polite" hidden>
+        <h2 id="detail-titre" class="detail__titre"></h2>
+        <p id="detail-meta" class="detail__meta"></p>
+        <ul id="detail-passes" class="detail__passes"></ul>
+        <p id="detail-alerte" class="detail__alerte" hidden></p>
+      </section>
+    </section>
+
+    <aside id="catalogue" class="catalogue" aria-label="Catalogue des shaders">
+      <div class="catalogue__barre">
+        <h2 class="catalogue__titre">Shaders</h2>
+        <button type="button" id="btn-dossier" class="bouton">Ouvrir un dossier…</button>
+        <button type="button" id="btn-fichiers" class="bouton">Ouvrir des .json…</button>
+        <input type="file" id="entree-dossier" webkitdirectory multiple hidden>
+        <input type="file" id="entree-fichiers" accept=".json,application/json" multiple hidden>
+      </div>
+      <p id="catalogue-etat" class="catalogue__etat" role="status">Chargement du catalogue…</p>
+      <ul id="catalogue-liste" class="catalogue__liste"></ul>
+      <p class="catalogue__aide">Sans manifeste, ouvrez le dossier <code>shaders/</code> ou déposez ici vos fichiers <code>.json</code>.</p>
+    </aside>
   </main>
+
+  <div id="depot" class="depot" hidden>Déposez un dossier ou des fichiers .json</div>
+  <script type="module" src="js/app.js"></script>
 
   <footer class="pied">
     <p>© 2026 SANDEFJORD / Patrick JAILLET — Distribué sous licence GPL-3.0-or-later</p>

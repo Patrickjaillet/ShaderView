@@ -12,6 +12,8 @@
   --texte: #e6e9f2;
   --texte-discret: #8d97b3;
   --accent: #ec4899;
+  --erreur: #f87171;
+  --attention: #fbbf24;
   --police: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -56,11 +58,25 @@ a {
 
 .principal {
   flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 1.5rem;
+  align-items: start;
+  padding: 1.5rem;
+}
+
+.scene {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
+  gap: 1rem;
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  .principal {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* Viewport de rendu fixe 800 × 450 (16:9) : mise à l'échelle par CSS uniquement. */
@@ -89,4 +105,179 @@ a {
 
 .pied p {
   margin: 0.15rem 0;
+}
+
+/* Détail du shader sélectionné (chargement paresseux) */
+.detail {
+  width: min(100%, 800px);
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--bordure);
+  border-radius: 6px;
+  background: var(--fond-surface);
+}
+
+.detail__titre {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.detail__meta {
+  margin: 0.15rem 0 0.5rem;
+  color: var(--texte-discret);
+  font-size: 0.85rem;
+}
+
+.detail__passes {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+}
+
+.detail__alerte {
+  margin: 0.5rem 0 0;
+  color: var(--attention);
+  font-size: 0.85rem;
+}
+
+/* Catalogue */
+.catalogue {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--bordure);
+  border-radius: 6px;
+  background: var(--fond-surface);
+}
+
+.catalogue__barre {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.catalogue__titre {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.bouton {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--bordure);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--texte);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.bouton:hover,
+.bouton:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.catalogue__etat,
+.catalogue__aide {
+  margin: 0;
+  color: var(--texte-discret);
+  font-size: 0.8rem;
+}
+
+.catalogue__liste {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 60vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.element {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--bordure);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.element:hover,
+.element:focus-visible,
+.element[aria-current="true"] {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.element--erreur {
+  border-color: var(--erreur);
+}
+
+.element__titre {
+  display: block;
+  overflow: hidden;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.element__fichier,
+.element__message {
+  display: block;
+  color: var(--texte-discret);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.element__message {
+  margin-top: 0.15rem;
+  color: var(--erreur);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+}
+
+.badge {
+  padding: 0 0.4rem;
+  border: 1px solid var(--bordure);
+  border-radius: 999px;
+  color: var(--texte-discret);
+  font-size: 0.7rem;
+}
+
+.badge--attention {
+  border-color: var(--attention);
+  color: var(--attention);
+}
+
+/* Zone de dépôt plein écran */
+.depot {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px dashed var(--accent);
+  background: rgba(11, 15, 26, 0.88);
+  font-size: 1.25rem;
+  pointer-events: none;
+}
+
+.depot[hidden] {
+  display: none;
 }
