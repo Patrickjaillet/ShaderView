@@ -1,0 +1,3 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// ShaderView — © 2026 SANDEFJORD / Patrick JAILLET
+// Distribué sous licence GPL-3.0-or-later
