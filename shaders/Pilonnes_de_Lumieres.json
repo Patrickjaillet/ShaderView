@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "fXd3Dl",
+  "date": "1789927521",
+  "viewed": 68,
+  "name": "Pilonnes de Lumières",
+  "description": "x",
+  "likes": 5,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 couleurFragment, in vec2 coordFragment) {\n    float temps = iTime;\n    float distanceRayon = fract(dot(coordFragment, sin(coordFragment)));\n    \n    couleurFragment = vec4(0.0);\n    \n    vec2 positionEcran = (coordFragment * 1.7 - iResolution.xy) / iResolution.y;\n    positionEcran *= 1.5 + dot(positionEcran, positionEcran) * (0.3 + 0.2 * sin(temps * 3.0));\n    \n    float angleA = temps * 0.07;\n    float angleB = sin(temps * 0.2) * 0.6;\n    \n    vec3 origineRayon = vec3(sin(angleA) * cos(angleB), sin(angleB), cos(angleA) * cos(angleB)) * 3.0;\n    vec3 pointCible = vec3(sin(temps * 0.5), cos(temps * 0.4), 0.0) * 0.3;\n    vec3 directionRegard = normalize(pointCible - origineRayon);\n    \n    vec3 axeHorizontal = normalize(vec3(-directionRegard.z, 0.0, directionRegard.x));\n    vec3 axeVertical = normalize(cross(axeHorizontal, directionRegard));\n    vec3 directionRayon = normalize(positionEcran.x * axeHorizontal + positionEcran.y * axeVertical + 1.0 * directionRegard);\n    \n    for(int i = 0; i < 100; i++) {\n        vec3 positionEspace = origineRayon + distanceRayon * directionRayon;\n        positionEspace.xz = mod(positionEspace.xz + 2.0, 4.0) - 2.0;\n        \n        float echelleFractale = 1.2;\n        \n        for(int j = 0; j < 4; j++) {\n            positionEspace = abs(positionEspace) - vec3(0.1, 0.4, 0.1);\n            float facteurInversion = max(0.2 / dot(positionEspace, positionEspace), 0.3);\n            \n            echelleFractale *= facteurInversion;\n            positionEspace *= facteurInversion;\n            \n            positionEspace.xy = vec2(positionEspace.x - positionEspace.y * sin(0.2), positionEspace.x * sin(0.5) + positionEspace.y * cos(0.7));\n            positionEspace.yz = vec2(positionEspace.y - positionEspace.z * sin(0.3), positionEspace.z * cos(0.02));\n        }\n        \n        float distanceProche = length(positionEspace) / echelleFractale;\n        \n        couleurFragment += (sin(distanceRayon * 0.8 - temps * 4.0) * 0.5 + 0.5) / distanceProche / 300.0;\n        distanceRayon += distanceProche * 0.3;\n    }\n    \n    couleurFragment = tanh(couleurFragment / 4.0);\n    couleurFragment.rgb = pow(couleurFragment.rrr, vec3(1.0));\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

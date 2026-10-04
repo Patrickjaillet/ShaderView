@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "7XdGRS",
+  "date": "1789460417",
+  "viewed": 59,
+  "name": "Fractal Skull",
+  "description": "x",
+  "likes": 5,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "skull"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "#define CAM_SPEED_X 0.0\n#define CAM_SPEED_Y 0.0\n#define CAM_DIST 0.20985401459854014\n#define CAM_Z -0.5474452554744524\n\n#define FOV_FACTOR 1.25\n#define ROT_SPEED 0.8941605839416058\n\n#define MAX_STEPS 97\n#define GLOW_ATTENUATION 43.79562043795621\n#define GLOW_INTENSITY 0.017107664233576642\n\n#define BASE_SCALE 2.1496350364963503\n#define FRACTAL_ITERS 4\n#define INVERSION_NUM 5.518248175182482\n#define INVERSION_MIN 1.0748175182481752\n#define OFFSET_XYZ vec3(3.8, 3.8, -0.4)\n\n#define FINAL_POWER 3.908759124087591\n\nvec3 palette(in float t) {\n    vec3 a = vec3(0.5, 0.5, 0.5);\n    vec3 b = vec3(0.5, 0.5, 0.5);\n    vec3 c = vec3(1.0, 1.0, 1.0);\n    vec3 d = vec3(0.00, 0.33, 0.67);\n    return a + b * cos(6.28318 * (c * t + d));\n}\n\nvec3 render(vec2 coordonneesPixel, vec2 resolution) {\n    float temps = iTime;\n\n    vec3 positionCamera = vec3(sin(temps * CAM_SPEED_X), cos(temps * CAM_SPEED_Y), CAM_Z) * CAM_DIST;\n    \n    vec2 uv = (coordonneesPixel * 2.0 - resolution) / resolution.y;\n    vec3 directionRayon = normalize(vec3(uv, FOV_FACTOR));\n\n    mat2 matriceRotation = mat2(cos(temps * ROT_SPEED + vec4(0.0, 33.0, 11.0, 0.0)));\n\n    vec3 couleurCumulee = vec3(0.0);\n    float distanceEstimation = 0.0;\n    float facteurEchelleGlobal;\n\n    vec3 positionRayon = positionCamera;\n    vec3 positionEspaceLocal;\n\n    for (int etape = 0; etape < MAX_STEPS; etape++) {\n        positionRayon += directionRayon * distanceEstimation;\n        \n        float pScalaireMem = 0.0;\n        positionEspaceLocal = positionRayon;\n        positionEspaceLocal.yz *= matriceRotation;\n        positionEspaceLocal = 1.0 - abs(positionEspaceLocal);\n\n        facteurEchelleGlobal = BASE_SCALE;\n\n        for (int iterationFractale = 0; iterationFractale < FRACTAL_ITERS; iterationFractale++) {\n            positionEspaceLocal = abs(positionEspaceLocal) - 1.0;\n            \n            float produitScalaire = dot(positionEspaceLocal, positionEspaceLocal);\n            float facteurInversion = INVERSION_NUM / min(produitScalaire, INVERSION_MIN);\n\n            facteurEchelleGlobal *= facteurInversion;\n            positionEspaceLocal = abs(positionEspaceLocal) * facteurInversion - OFFSET_XYZ;\n            pScalaireMem += produitScalaire;\n        }\n\n        float rayonXZ = length(positionEspaceLocal.xz);\n        distanceEstimation = rayonXZ / facteurEchelleGlobal;\n\n        float facteurGlow = exp(-distanceEstimation * GLOW_ATTENUATION) * GLOW_INTENSITY;\n        vec3 couleurTeinte = palette(pScalaireMem * 0.05 + temps * 0.1);\n        couleurCumulee += couleurTeinte * facteurGlow;\n    }\n\n    vec3 couleurFinale = vec3(1.0) - exp(-pow(couleurCumulee, vec3(FINAL_POWER)));\n\n    vec2 uvNorm = coordonneesPixel / resolution;\n    float vignette = uvNorm.x * uvNorm.y * (1.0 - uvNorm.x) * (1.0 - uvNorm.y);\n    vignette = clamp(pow(16.0 * vignette, 0.25), 0.0, 1.0);\n    \n    return couleurFinale * vignette;\n}\n\nvoid mainImage(out vec4 couleurSortie, vec2 coordonneesPixel) {\n    vec2 resolution = iResolution.xy;\n\n    vec3 col = vec3(0.0);\n    vec2 offsets[4];\n    offsets[0] = vec2(-0.25, -0.25);\n    offsets[1] = vec2( 0.25, -0.25);\n    offsets[2] = vec2(-0.25,  0.25);\n    offsets[3] = vec2( 0.25,  0.25);\n\n    for (int i = 0; i < 4; i++) {\n        col += render(coordonneesPixel + offsets[i], resolution);\n    }\n    col *= 0.25;\n\n    col = pow(col, vec3(1.0 / 2.2));\n\n    couleurSortie = vec4(col, 1.0);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

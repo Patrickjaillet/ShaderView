@@ -1,0 +1,59 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "s3tGzN",
+  "date": "1788864656",
+  "viewed": 329,
+  "name": "Electric Dr Who Waves",
+  "description": "// https://patrickjaillet.github.io/BS_shadertoy/\n",
+  "likes": 12,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [
+    {
+     "id": "4dXGR8",
+     "filepath": "/media/previz/buffer00.png",
+     "type": "buffer",
+     "channel": 0,
+     "sampler": {
+      "filter": "linear",
+      "wrap": "clamp",
+      "vflip": "true",
+      "srgb": "false",
+      "internal": "byte"
+     },
+     "published": 1
+    }
+   ],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "vec4 rendreTunnelInterieur(vec2 coordonneeFragment) {\n    vec2 resolutionEcran = iResolution.xy;\n    vec4 couleurAccumulee = vec4(0.0);\n    float tempsAnime = iTime * 1.5;\n    \n    float indexEtape = 0.0;\n    float distanceProfondeur = 0.0;\n    float distanceEstimationSurface = 0.0;\n    float echelleFractale = 0.0;\n\n    for (int etapeMarchage = 0; etapeMarchage < 200; etapeMarchage++) {\n        if (indexEtape + distanceProfondeur >= 200.0) {\n            break;\n        }\n        indexEtape += 1.0;\n\n        vec3 directionRayonProjection = distanceProfondeur * normalize(vec3((coordonneeFragment * 2.0 - resolutionEcran) / resolutionEcran.y, 1.2));\n        directionRayonProjection.z += tempsAnime * 4.5;\n\n        float angleRotationTorsion = -sin(directionRayonProjection.z * 0.15) * 0.7 - tempsAnime * 0.3;\n        mat2 matriceRotationXZ = mat2(\n            cos(angleRotationTorsion), -sin(angleRotationTorsion),\n            sin(angleRotationTorsion), cos(angleRotationTorsion)\n        );\n        directionRayonProjection.xy *= matriceRotationXZ;\n\n        vec3 positionPerturbee = directionRayonProjection;\n        for (echelleFractale = 0.3; echelleFractale < 18.0; echelleFractale /= 0.6) {\n            positionPerturbee += (abs(sin(positionPerturbee.zxy * echelleFractale + vec3(0.0, tempsAnime * 0.6, tempsAnime * 0.9))) - 0.55) / echelleFractale;\n        }\n\n        float distanceFormeTunnel = abs(length(directionRayonProjection.xy) - 1.8 + cos(directionRayonProjection.z * 0.6 - tempsAnime) * 0.8) / 8.0;\n        distanceEstimationSurface = 0.003 + distanceFormeTunnel;\n        distanceEstimationSurface += abs(positionPerturbee.y * 0.02);\n\n        distanceProfondeur += distanceEstimationSurface;\n\n        vec3 couleurMotifGradation = mix(\n            vec3(0.8, 0.1, 0.6),\n            vec3(0.1, 0.9, 0.7),\n            0.5 + 0.5 * cos(directionRayonProjection.z * 0.2 - tempsAnime)\n        );\n\n        float intensiteLuminescence = exp(-distanceProfondeur * 0.09) / (distanceEstimationSurface * 80.0 + 0.008);\n        couleurAccumulee.rgb += couleurMotifGradation * intensiteLuminescence;\n    }\n\n    return couleurAccumulee;\n}\n\nvoid mainImage(out vec4 couleurFragment, in vec2 coordonneeFragment) {\n    vec2 coordonneesUV = coordonneeFragment / iResolution.xy;\n\n    vec4 couleurArrierePlan = texture(iChannel0, coordonneesUV);\n    vec4 couleurTunnelAvantPlan = rendreTunnelInterieur(coordonneeFragment);\n\n    vec3 couleurFinaleComposee = couleurArrierePlan.rgb + couleurTunnelAvantPlan.rgb * 0.75;\n    couleurFinaleComposee = tanh(couleurFinaleComposee * 0.025);\n\n    couleurFragment = vec4(couleurFinaleComposee, 1.0);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  },
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dXGR8",
+     "channel": 0
+    }
+   ],
+   "code": "vec4 rendreTunnelEspaceTemps(vec2 coordonneeFragment) {\n    vec2 resolutionEcran = iResolution.xy;\n    vec4 couleurAccumulee = vec4(0.0);\n    float tempsAnime = iTime;\n    \n    float indexEtape = 0.0;\n    float distanceProfondeur = 0.0;\n    float distanceEstimationSurface = 0.0;\n    float echelleFractale = 0.0;\n\n    for (int etapeMarchage = 0; etapeMarchage < 300; etapeMarchage++) {\n        if (indexEtape + distanceProfondeur >= 300.0) {\n            break;\n        }\n        indexEtape += 1.0;\n\n        vec3 directionRayonProjection = distanceProfondeur * normalize(vec3((coordonneeFragment * 2.0 - resolutionEcran) / resolutionEcran.y, 1.2));\n        directionRayonProjection.z += tempsAnime * 3.0;\n\n        float angleRotationTorsion = sin(directionRayonProjection.z * 0.1) * 0.5 + tempsAnime * 0.2;\n        mat2 matriceRotationXZ = mat2(\n            cos(angleRotationTorsion), -sin(angleRotationTorsion),\n            sin(angleRotationTorsion), cos(angleRotationTorsion)\n        );\n        directionRayonProjection.xy *= matriceRotationXZ;\n\n        vec3 positionPerturbee = directionRayonProjection;\n        for (echelleFractale = 0.2; echelleFractale < 24.0; echelleFractale /= 0.55) {\n            positionPerturbee += (abs(sin(positionPerturbee.yzx * echelleFractale + vec3(tempsAnime * 0.8, tempsAnime * 0.4, 0.0))) - 0.6) / echelleFractale;\n        }\n\n        float distanceFormeTunnel = abs(length(directionRayonProjection.xy) - 3.5 + sin(directionRayonProjection.z * 0.4 + sin(tempsAnime)) * 1.2) / 10.0;\n        distanceEstimationSurface = 0.002 + distanceFormeTunnel;\n        distanceEstimationSurface += abs(positionPerturbee.x * 0.015);\n\n        distanceProfondeur += distanceEstimationSurface;\n\n        vec3 couleurVortexTemporal = mix(\n            vec3(0.05, 0.25, 0.9),\n            vec3(0.95, 0.35, 0.05),\n            0.5 + 0.5 * sin(directionRayonProjection.z * 0.15 + tempsAnime * 0.5)\n        );\n        couleurVortexTemporal += vec3(0.1, 0.4, 0.8) * cos(directionRayonProjection.z * 0.3 - tempsAnime);\n\n        float intensiteLuminescence = exp(-distanceProfondeur * 0.06) / (distanceEstimationSurface * 60.0 + 0.005);\n        couleurAccumulee.rgb += couleurVortexTemporal * intensiteLuminescence;\n    }\n\n    return vec4(couleurAccumulee.rgb, 1.0);\n}\n\nvoid mainImage(out vec4 couleurFragment, in vec2 coordonneeFragment) {\n    vec4 couleurSuperEchantillonnee = vec4(0.0);\n    \n    vec2 decalagesAntialiasing[4];\n    decalagesAntialiasing[0] = vec2(-0.25, -0.25);\n    decalagesAntialiasing[1] = vec2( 0.25, -0.25);\n    decalagesAntialiasing[2] = vec2(-0.25,  0.25);\n    decalagesAntialiasing[3] = vec2( 0.25,  0.25);\n\n    for (int indexEchantillon = 0; indexEchantillon < 4; indexEchantillon++) {\n        couleurSuperEchantillonnee += rendreTunnelEspaceTemps(coordonneeFragment + decalagesAntialiasing[indexEchantillon]);\n    }\n\n    couleurFragment = couleurSuperEchantillonnee * 0.25;\n}",
+   "name": "Buffer A",
+   "description": "",
+   "type": "buffer"
+  }
+ ]
+}

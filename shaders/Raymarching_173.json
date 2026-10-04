@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "raymarching-173",
+  "name": "Raymarching 173",
+  "description": "",
+  "username": "",
+  "tags": [
+   "raymarching"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "void mainImage(out vec4 O, vec2 U) {\n    O = vec4(.1, .1, .1, 1);\n    vec3 p, r = clamp(abs(fract(iTime * .15 + vec3(0, 2, 1) / 3.) * 6. - 3.) - 1., 0., 1.);\n    float d = 0., a = iTime * .4, C = cos(a), S = sin(a), s, A;\n\n    for(int i = 0; i < 70; i++) {\n        p = vec3((U + U - iResolution.xy) / iResolution.y * 1.45, d - .5);\n        p.zx *= mat2(C, -S, S, C);\n        A = 1.;\n\n        for(int j = 0; j < 19; j++)\n            A *= s = max(1.01, 7.5 / dot(p, p)),\n            p = vec3(2.5, 4, 2.8) - abs(abs(p) * s - vec3(3.2, 2.1, 4));\n\n        d += length(p.xz) / A;\n        O.rgb += log2(A) / d / 5900.1 * mix(vec3(1), r, clamp(1. - p.y * .1, 0., 1.));\n    }\n}"
+  }
+ ]
+}

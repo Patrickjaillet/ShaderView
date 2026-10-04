@@ -1,0 +1,109 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "sXyGRK",
+  "date": "1790627776",
+  "viewed": 64,
+  "name": "Sablier",
+  "description": "- Compilation ammelioré",
+  "likes": 10,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "sand"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [
+    {
+     "id": "4dXGR8",
+     "filepath": "/media/previz/buffer00.png",
+     "type": "buffer",
+     "channel": 0,
+     "sampler": {
+      "filter": "linear",
+      "wrap": "clamp",
+      "vflip": "true",
+      "srgb": "false",
+      "internal": "byte"
+     },
+     "published": 1
+    },
+    {
+     "id": "XsXGR8",
+     "filepath": "/media/previz/buffer01.png",
+     "type": "buffer",
+     "channel": 1,
+     "sampler": {
+      "filter": "linear",
+      "wrap": "clamp",
+      "vflip": "true",
+      "srgb": "false",
+      "internal": "byte"
+     },
+     "published": 1
+    }
+   ],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "// https://patrickjaillet.github.io/BS_shadertoy\nvoid mainImage(out vec4 coulFrag, in vec2 coordFrag){\n    g_zero = min(iFrame, 0);\n    vec2 res = iResolution.xy;\n    vec2 uv = (coordFrag - 0.5 * res) / res.y;\n\n    vec3 col = texelFetch(iChannel1, ivec2(coordFrag), 0).rgb;\n\n    vec3 lueurFine = vec3(0.0);\n    vec3 lueurLarge = vec3(0.0);\n    const int N = 24;\n    float rotation = hachage2(coordFrag + 3.7) * 6.2831853;\n\n    for(int i = g_zero; i < N; i++){\n        float fi = float(i) + 0.5;\n        float r = sqrt(fi / float(N));\n        float a = fi * 2.399963 + rotation;\n        vec2 dir = vec2(cos(a), sin(a)) * r;\n        vec3 s1 = textureLod(iChannel0, (coordFrag + dir * 0.018 * res.y) / res, 0.0).rgb;\n        vec3 s2 = textureLod(iChannel0, (coordFrag + dir * 0.07 * res.y) / res, 0.0).rgb;\n        lueurFine += max(s1 - 0., 0.) * (1.0 - r * 0.5);\n        lueurLarge += max(s2 - 0.2, 0.) * (1.0 - r * 0.5);\n    }\n\n    col += (lueurFine * 0.5 + lueurLarge * 0.0) / float(N);\n\n    col += vec3(1.0, 0.8, 0.55) * poussiere(uv, iTime) * 0.35 * exp(-dot(uv, uv) * 1.5);\n\n    col = aces(col * 1.1);\n    col = pow(col, vec3(1.0 / 2.2));\n    col *= clamp(1.0 - dot(uv, uv) * 0.9, 0.0, 1.0);\n    col += (hachage2(coordFrag + fract(iTime)) - 0.5) * 0.025;\n\n    coulFrag = vec4(clamp(col, 0.0, 1.0), 1.0);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  },
+  {
+   "inputs": [],
+   "outputs": [],
+   "code": "#define PI 3.14159265\n#define DUREE_FLUX 14.0\n#define DUREE_RETOURNEMENT 2.6\n#define PERIODE 16.6\n#define SOL (-1.26)\n#define DISTANCE_MISE_AU_POINT 6.5\n\nfloat g_temps, g_avancement, g_angle, g_retournement, g_levee, g_plan;\nfloat g_niveauA, g_creuxA, g_niveauB, g_penteB, g_flux;\nvec3 g_dirLum;\nint g_zero;\n\nmat2 rot(float a){\n    float c = cos(a), s = sin(a);\n    return mat2(c, -s, s, c);\n}\n\nfloat hachage2(vec2 p){\n    p = fract(p * vec2(123.34, 456.21));\n    p += dot(p, p + 45.32);\n    return fract(p.x * p.y);\n}\n\nfloat hachage3(vec3 p){\n    p = fract(p * 0.3183099 + vec3(0.1));\n    p *= 17.0;\n    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));\n}\n\nfloat bruit3(vec3 x){\n    vec3 i = floor(x), f = fract(x);\n    f = f * f * (3.0 - 2.0 * f);\n    return mix(\n        mix(mix(hachage3(i), hachage3(i + vec3(1,0,0)), f.x),\n            mix(hachage3(i + vec3(0,1,0)), hachage3(i + vec3(1,1,0)), f.x), f.y),\n        mix(mix(hachage3(i + vec3(0,0,1)), hachage3(i + vec3(1,0,1)), f.x),\n            mix(hachage3(i + vec3(0,1,1)), hachage3(i + vec3(1,1,1)), f.x), f.y), f.z);\n}\n\nfloat fbm(vec3 p){\n    float a = 0.5, s = 0.0;\n    for(int i = g_zero; i < 4; i++){\n        s += a * bruit3(p);\n        p = p * 2.03 + vec3(1.7, 9.2, 3.1);\n        a *= 0.5;\n    }\n    return s;\n}\n\nvoid definirEtat(float t){\n    float tc = mod(t, PERIODE);\n    float f = 1.0;\n    g_retournement = 0.0;\n    g_angle = 0.0;\n    g_levee = 0.0;\n    g_plan = 0.0;\n    if(tc < DUREE_FLUX){\n        f = tc / DUREE_FLUX;\n    } else {\n        float w = (tc - DUREE_FLUX) / DUREE_RETOURNEMENT;\n        float e = w * w * w * (w * (w * 6.0 - 15.0) + 10.0);\n        g_retournement = 1.0;\n        g_angle = PI * e;\n        g_levee = 0.5 * pow(max(sin(g_angle), 0.0), 0.6);\n        g_plan = mix(-0.25, -0.8, e) * cos(g_angle);\n    }\n    float fs = clamp(f / 0.93, 0.0, 1.0);\n    g_avancement = fs;\n    g_niveauB = mix(-1.05, -0.25, fs);\n    g_penteB = mix(0.75, 0.0, fs * fs * fs);\n    g_niveauA = mix(0.8, -0.03, fs);\n    g_creuxA = 0.3 * smoothstep(0.0, 0.15, fs) * (1.0 - smoothstep(0.7, 0.96, fs));\n    g_flux = (g_retournement > 0.5) ? 0.0 : smoothstep(0.004, 0.02, fs) * (1.0 - smoothstep(0.945, 0.975, fs));\n}\n\nfloat rayonInt(float y){\n    float t = clamp(abs(y) / 1.05, 0.0, 1.0);\n    return 0.05 + 0.5 * pow(sin(t * 1.5707963), 0.7);\n}\n\nvec3 versLocal(vec3 pw){\n    vec3 pc = pw - vec3(0.0, g_levee, 0.0);\n    return vec3(rot(g_angle) * pc.xy, pc.z);\n}\n\nfloat distanceSable(vec3 pc, vec3 p){\n    float r = length(p.xz);\n    float dint = max((r - rayonInt(p.y) + 0.006) * 0.7, abs(p.y) - 1.04);\n    float rw = length(pc.xz);\n    float d;\n    if(g_retournement > 0.5){\n        d = max(dint, pc.y - g_plan);\n        d = max(d, p.y);\n    } else {\n        float ysA = g_niveauA + g_creuxA * (0.6 - exp(-rw * rw * 9.0));\n        float ysB = g_niveauB - g_penteB * rw;\n        float dA = max(max(dint, pc.y - ysA), -p.y);\n        float dB = max(max(dint, pc.y - ysB), p.y);\n        d = min(dA, dB);\n    }\n    return d;\n}\n\nfloat distanceVerre(vec3 pw){\n    vec3 p = versLocal(pw);\n    float rad = (length(p.xz) - rayonInt(p.y)) * 0.7;\n    float d = abs(rad - 0.012) - 0.012;\n    return max(d, abs(p.y) - 1.09);\n}\n\nvec2 carte(vec3 pw){\n    vec3 pc = pw - vec3(0.0, g_levee, 0.0);\n    vec3 p = vec3(rot(g_angle) * pc.xy, pc.z);\n    vec2 res = vec2(pw.y - SOL, 0.0);\n    float ay = abs(p.y);\n    float rr = length(p.xz);\n\n    vec2 q = vec2(rr - 0.71, abs(ay - 1.17) - 0.05);\n    float dc = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - 0.04;\n    if(dc < res.x) res = vec2(dc, 1.0);\n\n    float ang = atan(p.z, p.x) + 0.52;\n    float sect = 2.0 * PI / 3.0;\n    float a = mod(ang, sect) - 0.5 * sect;\n    vec2 qq = rr * vec2(cos(a), sin(a));\n    float dp = max(length(qq - vec2(0.655, 0.0)) - 0.032, ay - 1.14);\n    if(dp < res.x) res = vec2(dp, 2.0);\n\n    float ds = distanceSable(pc, p);\n    if(ds < res.x) res = vec2(ds, 3.0);\n\n    if(g_flux > 0.001){\n        vec2 ondul = 0.004 * vec2(sin(pc.y * 40.0 - g_temps * 30.0), cos(pc.y * 33.0 - g_temps * 25.0));\n        float df = length(pc.xz + ondul) - 0.011 * g_flux;\n        df = max(df, max(pc.y - 0.04, g_niveauB - pc.y));\n        if(df < res.x) res = vec2(df, 4.0);\n    }\n    return res;\n}\n\nfloat marche(vec3 ro, vec3 rd, float tmin, float tmax, out float m){\n    float t = tmin;\n    m = -1.0;\n    for(int i = 0; i < 110; i++){\n        vec2 h = carte(ro + rd * t);\n        if(h.x < 0.0006 * t){\n            m = h.y;\n            return t;\n        }\n        t += h.x * 0.8;\n        if(t > tmax) break;\n    }\n    return -1.0;\n}\n\nfloat marcheVerre(vec3 ro, vec3 rd){\n    float t = 0.5;\n    for(int i = 0; i < 90; i++){\n        float h = distanceVerre(ro + rd * t);\n        if(h < 0.0004 * t) return t;\n        t += h * 0.75;\n        if(t > 16.0) break;\n    }\n    return -1.0;\n}\n\nvec3 normale(vec3 p){\n    vec3 n = vec3(0.0);\n    for(int i = g_zero; i < 4; i++){\n        vec3 e = 2.0 * vec3(float(((i + 3) >> 1) & 1), float((i >> 1) & 1), float(i & 1)) - 1.0;\n        n += e * carte(p + e * 0.0008).x;\n    }\n    return normalize(n);\n}\n\nvec3 normaleVerre(vec3 p){\n    vec3 n = vec3(0.0);\n    for(int i = g_zero; i < 4; i++){\n        vec3 e = 2.0 * vec3(float(((i + 3) >> 1) & 1), float((i >> 1) & 1), float(i & 1)) - 1.0;\n        n += e * distanceVerre(p + e * 0.0006);\n    }\n    return normalize(n);\n}\n\nfloat ombreDouce(vec3 ro, vec3 rd){\n    float res = 1.0, t = 0.03;\n    for(int i = 0; i < 28; i++){\n        float h = carte(ro + rd * t).x;\n        res = min(res, 10.0 * h / t);\n        t += clamp(h, 0.02, 0.25);\n        if(res < 0.002 || t > 5.0) break;\n    }\n    res = clamp(res, 0.0, 1.0);\n    return res * res * (3.0 - 2.0 * res);\n}\n\nfloat occlusion(vec3 p, vec3 n){\n    float o = 0.0, s = 1.0;\n    for(int i = g_zero; i < 5; i++){\n        float h = 0.01 + 0.09 * float(i);\n        o += (h - carte(p + n * h).x) * s;\n        s *= 0.75;\n    }\n    return clamp(1.0 - 2.2 * o, 0.0, 1.0);\n}\n\nvec3 fondEnv(vec3 rd){\n    vec3 c = mix(vec3(0.010, 0.009, 0.012), vec3(0.05, 0.035, 0.03), clamp(rd.y * 0.5 + 0.5, 0.0, 1.0));\n    c += vec3(1.0, 0.5, 0.2) * 0.22 * pow(max(dot(rd, normalize(vec3(0.15, 0.05, -1.0))), 0.0), 5.0);\n    return c;\n}\n\nvec3 environnement(vec3 rd){\n    vec3 c = fondEnv(rd);\n    float b1 = pow(max(dot(rd, g_dirLum), 0.0), 60.0);\n    c += vec3(1.0, 0.8, 0.55) * b1 * 9.0;\n    float b2 = (1.0 - smoothstep(0.05, 0.09, abs(rd.x - 0.7))) * smoothstep(-0.1, 0.1, rd.y)\n             * (1.0 - smoothstep(0.55, 0.7, rd.y)) * step(0.0, rd.z);\n    c += vec3(0.55, 0.7, 1.0) * b2 * 1.4;\n    float b3 = pow(max(dot(rd, normalize(vec3(-0.3, 0.5, -0.9))), 0.0), 30.0);\n    c += vec3(1.0, 0.9, 0.8) * b3 * 3.0;\n    return c;\n}\n\nvec3 couleurSurface(vec3 pos, vec3 nor, vec3 rd, float matiere){\n    vec3 pl = versLocal(pos);\n    vec3 alb = vec3(0.02, 0.018, 0.02);\n    float lustre = 60.0;\n    float f0 = 0.04;\n    float metal = 0.0;\n    float transl = 0.0;\n    float reflet = 0.5;\n    float eclat = 0.0;\n    vec3 n = nor;\n\n    if(matiere > 0.5 && matiere < 1.5){\n        float rayon = length(pl.xz);\n        float veine = 0.5 + 0.5 * sin(rayon * 46.0 + 5.0 * fbm(pl * vec3(3.0, 1.5, 3.0)));\n        alb = mix(vec3(0.06, 0.026, 0.011), vec3(0.22, 0.10, 0.04), veine);\n        float anneau = 1.0 - smoothstep(0.004, 0.010, abs(rayon - 0.62));\n        alb = mix(alb, vec3(0.95, 0.68, 0.32), anneau);\n        metal = anneau;\n        lustre = 140.0;\n        f0 = 0.05;\n        reflet = 0.35 + 0.4 * anneau;\n    } else if(matiere > 1.5 && matiere < 2.5){\n        alb = vec3(0.95, 0.68, 0.32) * (0.85 + 0.15 * bruit3(pos * 35.0));\n        metal = 1.0;\n        lustre = 220.0;\n        reflet = 1.0;\n    } else if(matiere > 2.5 && matiere < 3.5){\n        vec3 g = vec3(bruit3(pos * 170.0), bruit3(pos * 170.0 + 7.3), bruit3(pos * 170.0 + 13.1)) - 0.5;\n        n = normalize(nor + 0.45 * g);\n        float c = bruit3(pos * 80.0);\n        vec3 cellule = floor(pos * 240.0);\n        alb = mix(vec3(0.50, 0.31, 0.13), vec3(0.95, 0.72, 0.38), clamp(c * 1.3, 0.0, 1.0))\n            * (0.7 + 0.6 * hachage3(cellule));\n        transl = 0.6;\n        lustre = 25.0;\n        reflet = 0.05;\n        vec3 nn = normalize(vec3(hachage3(cellule + 1.0), hachage3(cellule + 2.0), hachage3(cellule + 3.0)) - 0.5);\n        vec3 hv = normalize(g_dirLum - rd);\n        eclat = pow(max(dot(nn, hv), 0.0), 260.0) * step(0.55, hachage3(cellule + 5.0)) * 9.0;\n    } else if(matiere > 3.5){\n        alb = vec3(1.0, 0.78, 0.42);\n        transl = 1.0;\n        lustre = 20.0;\n        reflet = 0.0;\n    }\n\n    vec3 L = g_dirLum;\n    float ombre = ombreDouce(pos + nor * 0.012, L);\n    float ao = occlusion(pos, nor);\n    float ndl = max(dot(n, L), 0.0);\n    vec3 cle = vec3(1.0, 0.78, 0.52) * 3.4;\n    vec3 dirR = normalize(vec3(0.7, 0.15, 0.7));\n    vec3 remp = vec3(0.35, 0.5, 0.8) * 0.6;\n    vec3 dirC = normalize(vec3(-0.3, 0.35, -0.9));\n    vec3 contre = vec3(1.0, 0.85, 0.7) * 1.4;\n\n    vec3 lumiere = cle * ndl * ombre\n                 + remp * (0.5 + 0.5 * dot(n, dirR))\n                 + contre * max(dot(n, dirC), 0.0)\n                 + fondEnv(n) * 5.0;\n\n    vec3 col = alb * (1.0 - metal) * lumiere * mix(1.0, ao, 0.9);\n    col += transl * alb * cle * pow(clamp(dot(rd, L), 0.0, 1.0), 3.0) * (0.3 + 0.7 * ombre) * 0.9;\n\n    vec3 hh = normalize(L - rd);\n    float cv = max(dot(n, -rd), 0.0);\n    vec3 f = mix(vec3(f0), alb, metal);\n    vec3 fr = f + (1.0 - f) * pow(1.0 - cv, 5.0);\n    float sp = pow(max(dot(n, hh), 0.0), lustre) * (lustre + 8.0) * 0.04 * ndl * ombre;\n    col += cle * sp * fr;\n    col += environnement(reflect(rd, n)) * fr * ao * reflet;\n    col += vec3(1.0, 0.85, 0.6) * eclat * ombre;\n    if(matiere > 3.5) col += alb * 1.6;\n    return col;\n}\n\nfloat poussiere(vec2 uv, float t){\n    float s = 0.0;\n    for(int i = g_zero; i < 3; i++){\n        float fi = float(i);\n        vec2 q = uv * (6.0 + fi * 5.0) + vec2(t * 0.03 * (fi + 1.0), -t * 0.05 * (fi + 1.0)) + fi * 17.3;\n        vec2 id = floor(q);\n        vec2 f = fract(q) - 0.5;\n        float h = hachage2(id + fi * 7.1);\n        vec2 dec = (vec2(hachage2(id + 3.1), hachage2(id + 9.7)) - 0.5) * 0.6;\n        float d = length(f - dec);\n        float rayon = 0.02 + 0.05 * h;\n        float scint = 0.5 + 0.5 * sin(t * (1.0 + h * 3.0) + h * 40.0);\n        s += (1.0 - smoothstep(0.0, rayon, d)) * step(0.55, h) * scint * (0.6 / (fi + 1.0));\n    }\n    return s;\n}\n\nvec3 aces(vec3 x){\n    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);\n}\n\nfloat cercleConfusion(float prof, float hauteur){\n    return clamp(abs(prof - DISTANCE_MISE_AU_POINT) * 1.2 - 0.6, 0.0, 6.0) * hauteur / 720.0;\n}",
+   "name": "Common",
+   "description": "",
+   "type": "common"
+  },
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dXGR8",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 coulFrag, in vec2 coordFrag){\n    g_zero = min(iFrame, 0);\n    g_temps = iTime;\n    definirEtat(iTime);\n    g_dirLum = normalize(vec3(-0.85, 0.75, 0.35));\n\n    vec2 uv = (coordFrag - 0.5 * iResolution.xy) / iResolution.y;\n\n    float az = 0.45 * sin(iTime * 0.11) + 0.25;\n    float el = 0.16 + 0.05 * sin(iTime * 0.07);\n    if(iMouse.z > 0.0){\n        az = (iMouse.x / iResolution.x - 0.5) * 4.0;\n        el = 0.02 + (iMouse.y / iResolution.y) * 0.9;\n    }\n\n    vec3 cible = vec3(0.0, 0.1, 0.0);\n    vec3 ro = cible + DISTANCE_MISE_AU_POINT * vec3(sin(az) * cos(el), sin(el), cos(az) * cos(el));\n    vec3 cw = normalize(cible - ro);\n    vec3 cu = normalize(cross(cw, vec3(0.0, 1.0, 0.0)));\n    vec3 cv = cross(cu, cw);\n    vec3 rd = normalize(uv.x * cu + uv.y * cv + 2.0 * cw);\n\n    vec3 poids = vec3(1.0);\n    vec3 ajout = vec3(0.0);\n    float prof = 40.0;\n    int mode = 0;\n\n    for(int it = g_zero; it < 3; it++){\n        float m;\n        float tg = -1.0;\n        if(mode == 0) tg = marcheVerre(ro, rd);\n        float tmax = (tg > 0.0) ? tg : 30.0;\n        float t = marche(ro, rd, 0.02, tmax, m);\n\n        if(t < 0.0){\n            if(tg > 0.0){\n                vec3 pg = ro + rd * tg;\n                vec3 ng = normaleVerre(pg);\n                float cs = clamp(dot(ng, -rd), 0.0, 1.0);\n                float F = 0.04 + 0.96 * pow(1.0 - cs, 5.0);\n                vec3 rdb = normalize(mix(rd, refract(rd, ng, 1.0 / 1.5), 0.55));\n                vec3 absorption = exp(-vec3(0.30, 0.09, 0.13) * 0.5 / max(cs, 0.25));\n                vec3 R = reflect(rd, ng);\n                float speculaire = pow(max(dot(R, g_dirLum), 0.0), 500.0) * 40.0;\n                ajout += poids * (environnement(R) * F\n                                + speculaire * vec3(1.0, 0.85, 0.6)\n                                + vec3(0.02, 0.05, 0.045) * pow(1.0 - cs, 3.0) * 0.8);\n                poids *= absorption * (1.0 - F);\n                if(it == 0) prof = tg;\n                ro = pg - ng * 0.04;\n                rd = rdb;\n                mode = 1;\n                continue;\n            }\n            ajout += poids * environnement(rd);\n            break;\n        }\n\n        if(it == 0) prof = t;\n        vec3 pos = ro + rd * t;\n        vec3 nor = normale(pos);\n        bool sol = (m < 0.5) && (mode != 2);\n        vec3 nrm = nor;\n        if(sol) nrm = normalize(nor + vec3(bruit3(pos * 14.0) - 0.5, 0.0, bruit3(pos * 14.0 + 4.0) - 0.5) * 0.05);\n\n        vec3 c = couleurSurface(pos, nrm, rd, m);\n        float k = 1.0 - exp(-t * ((mode == 2) ? 0.06 : 0.055));\n        vec3 fond = fondEnv(rd);\n\n        if(sol){\n            float cosv = max(dot(nrm, -rd), 0.0);\n            float F = mix(0.22, 1.0, pow(1.0 - cosv, 5.0));\n            ajout += poids * ((1.0 - k) * (1.0 - F) * c + k * fond);\n            poids *= (1.0 - k) * F;\n            ro = pos + nrm * 0.01;\n            rd = reflect(rd, nrm);\n            mode = 2;\n        } else {\n            ajout += poids * ((1.0 - k) * c + k * fond);\n            break;\n        }\n    }\n\n    coulFrag = vec4(ajout, prof);\n}",
+   "name": "Buffer A",
+   "description": "",
+   "type": "buffer"
+  },
+  {
+   "inputs": [
+    {
+     "id": "4dXGR8",
+     "filepath": "/media/previz/buffer00.png",
+     "type": "buffer",
+     "channel": 0,
+     "sampler": {
+      "filter": "linear",
+      "wrap": "clamp",
+      "vflip": "true",
+      "srgb": "false",
+      "internal": "byte"
+     },
+     "published": 1
+    }
+   ],
+   "outputs": [
+    {
+     "id": "XsXGR8",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 coulFrag, in vec2 coordFrag){\n    g_zero = min(iFrame, 0);\n    vec2 res = iResolution.xy;\n    vec4 centre = texelFetch(iChannel0, ivec2(coordFrag), 0);\n    float c = cercleConfusion(centre.a, res.y);\n\n    if(c < 0.35){\n        coulFrag = centre;\n        return;\n    }\n\n    vec3 somme = centre.rgb;\n    float poids = 1.0;\n    const int N = 32;\n    float rotation = hachage2(coordFrag) * 6.2831853;\n\n    for(int i = g_zero; i < N; i++){\n        float fi = float(i) + 0.5;\n        float r = sqrt(fi / float(N));\n        float a = fi * 2.399963 + rotation;\n        vec2 dec = vec2(cos(a), sin(a)) * r * c;\n        vec4 s = textureLod(iChannel0, (coordFrag + dec) / res, 0.0);\n        float cs = cercleConfusion(s.a, res.y);\n        float w = clamp(cs - length(dec) + 1.0, 0.0, 1.0);\n        float lum = dot(s.rgb, vec3(0.3, 0.59, 0.11));\n        w *= 1.0 + 0.5 * min(lum, 8.0);\n        somme += s.rgb * w;\n        poids += w;\n    }\n\n    coulFrag = vec4(somme / poids, centre.a);\n}",
+   "name": "Buffer B",
+   "description": "",
+   "type": "buffer"
+  }
+ ]
+}

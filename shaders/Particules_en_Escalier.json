@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "NXdGDl",
+  "date": "1790113401",
+  "viewed": 46,
+  "name": "Particules en Escalier",
+  "description": "x",
+  "likes": 5,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "particles"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 couleurSortie, vec2 coordonneesPixel) {\n    vec3 resolution = iResolution;\n    vec2 coordonneesNormalisees = (coordonneesPixel + coordonneesPixel - resolution.xy) / resolution.y;\n    \n    couleurSortie = vec4(0.0);\n    \n    for (float indexParticule = 0.0; indexParticule < 700.0; indexParticule++) {\n        vec3 valeurAleatoire = fract(sin((indexParticule + vec3(1.0, 8.7, 3.7)) * 3000.0) * 4000.0);\n        \n        float vitesse = 0.8 + 0.4 * valeurAleatoire.y;\n        float tempsEcoule = (iTime * vitesse) + valeurAleatoire.z * 10.0;\n        \n        float dureeTotale = 6.0;\n        float tempsLoop = mod(tempsEcoule, dureeTotale);\n        \n        float nbMarches = 6.0;\n        float etageActuel = floor(tempsLoop);\n        float tFraction = fract(tempsLoop);\n        \n        float rapportAspect = resolution.x / resolution.y;\n        float etendueX = rapportAspect * 2.8;\n        \n        float directionDiagonale = 0.35;\n        float xInitial = (valeurAleatoire.x - 0.5) * etendueX - (etageActuel * directionDiagonale);\n        \n        float vitesseRoulement = 0.18 + 0.08 * valeurAleatoire.y;\n        float positionX = xInitial + (etageActuel + tFraction) * vitesseRoulement;\n        \n        float hauterMarche = 0.38;\n        float hauteurBase = 1.1 - etageActuel * hauterMarche;\n        \n        float gravite = 4.0;\n        float chuteY = 0.5 * gravite * tFraction * tFraction * hauterMarche;\n        float positionY = hauteurBase - chuteY;\n        \n        vec2 positionParticule = vec2(positionX, positionY);\n        float distanceParticule = length(coordonneesNormalisees - positionParticule);\n        \n        vec4 couleurParticule = 0.5 + 0.5 * cos(6.28318 * (valeurAleatoire.y + vec4(0.0, 0.33, 0.67, 0.0)));\n        \n        float fonduEntree = smoothstep(0.0, 0.15, tempsLoop);\n        float fonduSortie = smoothstep(dureeTotale, dureeTotale - 0.3, tempsLoop);\n        float visibilite = fonduEntree * fonduSortie;\n        \n        float rayonPixel = 1.5 / resolution.y;\n        float coeurNet = smoothstep(rayonPixel, 0.0, distanceParticule);\n        float haloFluide = 0.000015 / (distanceParticule * distanceParticule + 0.000008);\n        \n        float intensiteLumiere = coeurNet * 2.5 + haloFluide;\n        \n        couleurSortie += couleurParticule * visibilite * intensiteLumiere;\n    }\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "divers-042",
+  "name": "Divers 042",
+  "description": "",
+  "username": "",
+  "tags": [
+   "divers"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "void mainImage(out vec4 v, in vec2 w) {\n    vec2 k = (w - .5 * iResolution.xy) / iResolution.y;\n    float s = length(k);\n    float x = atan(k.y, k.x);\n    float e = log(s) - iTime * .4;\n    vec3 b = vec3(0.);\n    vec3 h = vec3(0.);\n    float f = 0.;\n    const int y = 40;\n    float l = .08;\n    vec3 z = vec3(1., 6., .9);\n    vec3 A = vec3(1.2, -3.8, .8);\n    for(int t = 0; t < y; t++) {\n        float g = iTime * .5 + f * 1.;\n        float d = 1.5;\n        float i = 1.;\n        vec3 noise3 = vec3(0.);\n        vec3 a = x * z + iTime * A;\n        for(int u = 0; u < 12; u++) {\n            vec3 m = vec3(cos(a.x) * 2., sin(a.x) * 2., e * 4.) * d;\n            vec3 n = vec3(cos(a.y) * 2., sin(a.y) * 2., e * 4.) * d;\n            vec3 o = vec3(cos(a.z) * 2., sin(a.z) * 2., e * 4.) * d;\n            m.z += g * d;\n            n.z += g * d;\n            o.z += g * d;\n            noise3.x += dot(sin(m), cos(m.zxy)) * i;\n            noise3.y += dot(sin(n), cos(n.zxy)) * i;\n            noise3.z += dot(sin(o), cos(o.zxy)) * i;\n            d *= 2.;\n            i *=.5;\n        }\n        vec3 c = max(vec3(0.), 1. - abs(noise3));\n        c = pow(c, vec3(4.4));\n        if(max(c.x, max(c.y, c.z)) > .01) {\n            vec3 p = vec3(cos(a.x) * 2., sin(a.x) * 2., e * 4.) + vec3(0., 0., g);\n            vec3 q = vec3(cos(a.y) * 2., sin(a.y) * 2., e * 4.) + vec3(0., 0., g);\n            vec3 r = vec3(cos(a.z) * 2., sin(a.z) * 2., e * 4.) + vec3(0., 0., g);\n            float B = dot(sin(p * 4.), cos(p.zxy * 4.));\n            float C = dot(sin(q * 4.), cos(q.zxy * 4.));\n            float D = dot(sin(r * 4.), cos(r.zxy * 4.));\n            vec3 E = vec3(B, C, D);\n            vec3 F = vec3(p.z, q.z, r.z);\n            vec3 G = 1. + 1. * cos(vec3(0., 1., 2.) + F * 1. + noise3 * 1.3);\n            vec3 H = vec3(1., .6, 0.) * max(vec3(0.), E);\n            vec3 I = G * c + H * pow(c, vec3(2.));\n            float J = 1. / (1. + f * f * .1);\n            b += I * J * l;\n            h += c * l;\n            if(min(h.x, min(h.y, h.z)) >= .95) break;\n        }\n        f += l;\n    }\n    b *= 1.7;\n    b = mix(b, vec3(0.), 1. - exp(-.05 * f * f));\n    b = pow(b, vec3(.4545));\n    b = clamp(b * 1.2, 0., 1.);\n    float j = s * .6;\n    j = .9 - j * j;\n    b *= clamp(j, 0., 1.);\n    v = vec4(b, 1.);\n}"
+  }
+ ]
+}

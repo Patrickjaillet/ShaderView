@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "73d3DH",
+  "date": "1789133410",
+  "viewed": 39,
+  "name": "Planet Fabric",
+  "description": "x",
+  "likes": 2,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "planet"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "float estimerDistanceGrilleAccrochee(vec3 position, vec3 positionMasse, float temps) {\n    vec3 positionGrille = position * (1.0 + 0.03 * sin(temps * 0.5));\n    \n    vec3 versMasse = positionMasse - positionGrille;\n    float distanceAttraction = length(versMasse);\n    float forceDistorsion = 1.2 / (distanceAttraction * distanceAttraction + 0.2);\n    \n    positionGrille = positionGrille + normalize(versMasse) * forceDistorsion;\n    \n    vec3 celluleRepetee = fract(positionGrille) - 0.5;\n    float epaisseurBarre = 0.02;\n    \n    float axeX = length(celluleRepetee.yz) - epaisseurBarre;\n    float axeY = length(celluleRepetee.xz) - epaisseurBarre;\n    float axeZ = length(celluleRepetee.xy) - epaisseurBarre;\n    \n    return min(min(axeX, axeY), axeZ);\n}\n\nfloat estimerDistanceScene(vec3 position, vec3 positionMasse, float temps) {\n    float distanceGrille = estimerDistanceGrilleAccrochee(position, positionMasse, temps);\n    float distanceSphereMasse = length(position - positionMasse) - 0.3;\n    \n    return min(distanceGrille, distanceSphereMasse);\n}\n\nvec3 calculerNormaleGradiee(vec3 position, vec3 positionMasse, float temps) {\n    vec2 epsilon = vec2(0.005, 0.0);\n    \n    float distanceCentre = estimerDistanceScene(position, positionMasse, temps);\n    float distanceX = estimerDistanceScene(position - epsilon.xyy, positionMasse, temps);\n    float distanceY = estimerDistanceScene(position - epsilon.yxy, positionMasse, temps);\n    float distanceZ = estimerDistanceScene(position - epsilon.yyx, positionMasse, temps);\n    \n    return normalize(distanceCentre - vec3(distanceX, distanceY, distanceZ));\n}\n\nvoid mainImage(out vec4 couleurFragment, in vec2 coordFragment) {\n    vec2 uvNormalisees = (coordFragment - 0.5 * iResolution.xy) / iResolution.y;\n    float temps = iTime;\n    \n    float tempsCamera = temps * 0.2;\n    vec3 origineRayon = vec3(5.0 * sin(tempsCamera), 3.0, 5.0 * cos(tempsCamera));\n    vec3 pointCible = vec3(0.0, 0.0, 0.0);\n    \n    vec3 axeAvant = normalize(pointCible - origineRayon);\n    vec3 axeDroit = normalize(cross(vec3(0.0, 1.0, 0.0), axeAvant));\n    vec3 axeHaut = cross(axeAvant, axeDroit);\n    vec3 directionRayon = normalize(axeAvant + uvNormalisees.x * axeDroit + uvNormalisees.y * axeHaut);\n\n    vec3 positionMasse = vec3(\n        sin(temps * 0.8) * 2.5,\n        cos(temps * 0.4) * 1.0,\n        cos(temps * 0.8) * 2.5\n    );\n\n    float distanceEtape = 0.0;\n    for (int etape = 0; etape < 128; etape++) {\n        vec3 positionCourante = origineRayon + directionRayon * distanceEtape;\n        float distanceProche = estimerDistanceScene(positionCourante, positionMasse, temps);\n        \n        distanceEtape += distanceProche;\n        if (distanceEtape > 30.0 || distanceProche < 0.001) break;\n    }\n\n    vec3 couleurFond = vec3(0.01, 0.02, 0.05);\n    vec3 couleurFinale = couleurFond;\n    \n    if (distanceEtape < 30.0) {\n        vec3 positionImpact = origineRayon + directionRayon * distanceEtape;\n        \n        vec3 normaleSurface = calculerNormaleGradiee(positionImpact, positionMasse, temps);\n        \n        float distanceMasse = length(positionImpact - positionMasse);\n        vec3 directionLumiere = normalize(vec3(1.0, 2.0, -1.0));\n        float eclairageDiffuse = max(dot(normaleSurface, directionLumiere), 0.1);\n        \n        vec3 couleurObjet = vec3(0.1, 0.6, 0.9) * eclairageDiffuse;\n        if (distanceMasse < 0.31) {\n            couleurObjet = vec3(1.0, 0.9, 0.7);\n        }\n        \n        float luminescenceEnergie = 1.5 / (distanceMasse * distanceMasse * 5.0 + 0.1);\n        couleurObjet += vec3(1.0, 0.6, 0.2) * luminescenceEnergie;\n        \n        couleurFinale = mix(couleurObjet, couleurFond, 1.0 - exp(-0.05 * distanceEtape));\n    }\n    \n    couleurFinale = pow(couleurFinale, vec3(0.4545));\n    couleurFragment = vec4(couleurFinale, 1.0);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

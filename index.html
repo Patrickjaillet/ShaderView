@@ -27,10 +27,21 @@
       <canvas id="viewport" class="viewport" width="800" height="450" aria-label="Rendu du shader sélectionné"></canvas>
       <noscript><p class="avertissement">ShaderView nécessite JavaScript et WebGL2 pour afficher les shaders.</p></noscript>
       <section id="detail" class="detail" aria-live="polite" hidden>
-        <h2 id="detail-titre" class="detail__titre"></h2>
-        <p id="detail-meta" class="detail__meta"></p>
-        <ul id="detail-passes" class="detail__passes"></ul>
+        <div class="detail__entete">
+          <h2 id="detail-titre" class="detail__titre"></h2>
+          <p id="detail-meta" class="detail__meta"></p>
+        </div>
         <p id="detail-alerte" class="detail__alerte" hidden></p>
+        <div id="detail-son" class="detail__son" hidden>
+          <button type="button" id="btn-son" class="bouton" aria-pressed="false">Lire le son</button>
+          <span id="detail-son-etat" class="detail__son-etat" role="status"></span>
+        </div>
+        <div id="detail-musique" class="detail__musique" hidden></div>
+        <p id="detail-perf" class="detail__perf" role="status"></p>
+        <div role="tablist" id="detail-onglets" class="detail__onglets" aria-label="Passes du shader"></div>
+        <div id="detail-canaux" class="detail__canaux"></div>
+        <pre id="detail-code" class="detail__code" tabindex="0"><code id="detail-code-contenu"></code></pre>
+        <ul id="detail-journal" class="detail__journal"></ul>
       </section>
     </section>
 
@@ -42,8 +53,29 @@
         <input type="file" id="entree-dossier" webkitdirectory multiple hidden>
         <input type="file" id="entree-fichiers" accept=".json,application/json" multiple hidden>
       </div>
+      <div class="catalogue__recherche">
+        <label for="catalogue-recherche" class="etiquette-visible">Rechercher</label>
+        <input type="search" id="catalogue-recherche" class="champ" placeholder="Rechercher (titre, auteur, tag…)">
+      </div>
+      <div class="catalogue__filtres" role="group" aria-label="Filtres">
+        <label><input type="checkbox" id="filtre-multipasse" value="multipasse"> Multipasse</label>
+        <label><input type="checkbox" id="filtre-son" value="son"> Avec son</label>
+        <label><input type="checkbox" id="filtre-erreurs" value="erreurs"> Erreurs</label>
+        <label><input type="checkbox" id="filtre-medias" value="medias_manquants"> Médias manquants</label>
+      </div>
+      <div class="catalogue__tri">
+        <label for="catalogue-tri" class="etiquette-visible">Trier par</label>
+        <select id="catalogue-tri" class="champ">
+          <option value="nom">Nom de fichier</option>
+          <option value="titre">Titre</option>
+          <option value="auteur">Auteur</option>
+          <option value="taille">Taille</option>
+          <option value="date">Date</option>
+        </select>
+        <button type="button" id="btn-tri-sens" class="bouton" aria-pressed="false" title="Inverser le sens du tri">↓</button>
+      </div>
       <p id="catalogue-etat" class="catalogue__etat" role="status">Chargement du catalogue…</p>
-      <ul id="catalogue-liste" class="catalogue__liste"></ul>
+      <ul id="catalogue-liste" class="catalogue__liste" role="listbox" aria-label="Liste des shaders"></ul>
       <p class="catalogue__aide">Sans manifeste, ouvrez le dossier <code>shaders/</code> ou déposez ici vos fichiers <code>.json</code>.</p>
     </aside>
   </main>

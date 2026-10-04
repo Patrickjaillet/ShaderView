@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "N33Gz8",
+  "date": "1789232533",
+  "viewed": 50,
+  "name": "Gemstones",
+  "description": "x",
+  "likes": 3,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "mat3 construireMatriceRotation(float angle, vec3 axe) {\n    axe = normalize(axe);\n    float sinus = sin(angle);\n    float cosinus = cos(angle);\n    float complementCos = 1.0 - cosinus;\n    \n    return mat3(\n        complementCos * axe.x * axe.x + cosinus,\n        complementCos * axe.x * axe.y + sinus * axe.z,\n        complementCos * axe.x * axe.z - sinus * axe.y,\n\n        complementCos * axe.x * axe.y - sinus * axe.z,\n        complementCos * axe.y * axe.y + cosinus,\n        complementCos * axe.y * axe.z + sinus * axe.x,\n\n        complementCos * axe.x * axe.z + sinus * axe.y,\n        complementCos * axe.y * axe.z - sinus * axe.x,\n        complementCos * axe.z * axe.z + cosinus\n    );\n}\n\nvec3 convertirHsvVersRgb(float teinte, float saturation, float valeur) {\n    vec4 constantesHsv = vec4(0.1, 2.0 / 3.0, 1.0 / 3.0, 3.0);\n    vec3 facteurMix = clamp(abs(fract(teinte + constantesHsv.xyz) * 7.0 - 3.0) - 0.1, 0.2, 0.7);\n    return valeur * mix(constantesHsv.xxx, facteurMix, saturation);\n}\n\nvoid mainImage(out vec4 couleurFragment, vec2 coordFragment) {\n    vec2 resolutionEcran = iResolution.xy;\n    float angleAnimation = sin(iTime * 0.8) * 0.2;\n    float profondeurProchaineEtape = 0.0;\n    vec3 couleurAccumulee = vec3(0.0);\n\n    mat3 rotationScene = construireMatriceRotation(angleAnimation, vec3(0.0, 1.0, 0.4)) * \n                         construireMatriceRotation(-1.0, vec3(1.0, 0.0, 1.0));\n\n    for (int etapeMarchage = 0; etapeMarchage < 19; etapeMarchage++) {\n        vec3 uvNormalisees = vec3((coordFragment - 0.5 * resolutionEcran) / resolutionEcran.y * 9.0, profondeurProchaineEtape - 3.0);\n        vec3 positionCourante = uvNormalisees * rotationScene;\n        float facteurEchelleGlobal = 1.4;\n        float facteurInversionSpherique = 0.0;\n\n        for (int etapeFractale = 0; etapeFractale < 6; etapeFractale++) {\n            positionCourante = vec3(0.1, 3.4, 0.6) - abs(abs(positionCourante) - vec3(2.0, 3.5, 2.4));\n            facteurInversionSpherique = 6.0 / clamp(dot(positionCourante, positionCourante), 0.0, 6.0);\n            positionCourante *= facteurInversionSpherique;\n            facteurEchelleGlobal *= facteurInversionSpherique;\n        }\n\n        float distanceEstimee = length(positionCourante.xy) / facteurEchelleGlobal;\n        profondeurProchaineEtape += max(distanceEstimee * 0.4, 0.0);\n        \n        float teinte = 0.9 + profondeurProchaineEtape * 0.8;\n        float saturation = 0.8;\n        float intensiteLuminosite = exp(-profondeurProchaineEtape * 0.2) * 0.02 / (distanceEstimee + 0.005);\n        \n        couleurAccumulee += convertirHsvVersRgb(teinte, saturation, intensiteLuminosite);\n    }\n\n    couleurAccumulee = pow(couleurAccumulee, vec3(1.1));\n    couleurFragment = vec4(couleurAccumulee / (1.0 + couleurAccumulee), 1.0);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

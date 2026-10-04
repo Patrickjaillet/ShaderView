@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "7X33Rj",
+  "date": "1789422675",
+  "viewed": 127,
+  "name": "Bump Grid",
+  "description": "Bump Grid",
+  "likes": 10,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "bump"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "float H(vec2 p){\n    p  = fract(p*.1);\n    p += dot(p,p+50.);\n    return fract(p.x*p.y);\n}\nfloat N(vec2 s){\n    vec2 i = floor(s);\n         s -= i; s *= s*(3.-s-s);\n    return mix( mix(H(i),H(i+vec2(1,0)),s.x)\n              , mix(H(i+vec2(0,1)),H(i+1.),s.x)\n              , s.y);\n}\nvec2 D(vec2 p,vec2 K){\n    return p - exp( .5 - length(K-=p) / (1.+45.*N(p/30.) )) * K ;\n}\nfloat S(vec2 p,vec2 a,vec2 q){\n    p-=a,q-=a;\n    return length(p-q*clamp(dot(p,q)/dot(q,q),0.,1.));\n}\nvoid mainImage(out vec4 O, vec2 u){\n    float t = iTime*.5, M = 1e3, d;\n    vec2 R = iResolution.xy,\n         I = floor(u/5.)*5., P = I, x,\n         W = max(R.x,R.y) *vec2( N(vec2(t,0)), N(vec2(t,9) ));\n    for( x = vec2(-8)\n       ; x.y < 9.\n       ; x.x>8. ? x.x=-8.,x.y++ : x.x++\n       ) {\n        vec2 \n        C = I+x*5.,\n        p1 = D(C,W),\n        p2 = D(C+vec2(0,5),W),\n        p3 = D(C+vec2(5,3),W);\n        d = min(S(u,p1,p2)\n           ,min(S(u,p2,p3)\n               ,S(u,p3,p1)));\n        d<M ? M=d,P=C : C;\n    }\n    O = mix( vec4(.97255)\n           , .5+.5*cos(6.2832*(N(P/R*2.+t*.2)+vec4(0,.33,.67,0)))\n           , smoothstep(1.2,0.,M));\n}\n\n/* 1828 -> 822\nfloat H(vec2 p){\n    p=fract(p*.1);\n    p+=dot(p,p+50.);\n    return fract(p.x*p.y);\n}\nfloat N(vec2 p){\n    vec2 i=floor(p),f=fract(p),s=f*f*(3.-2.*f);\n    return mix(mix(H(i),H(i+vec2(1,0)),s.x),mix(H(i+vec2(0,1)),H(i+1.),s.x),s.y);\n}\nvec2 D(vec2 p,vec2 W){\n    vec2 K=W-p;\n    return p-K*exp(-length(K)/(1.+45.*N(p/30.))+.5);\n}\nfloat S(vec2 u,vec2 a,vec2 b){\n    vec2 p=u-a,q=b-a;\n    return length(p-q*clamp(dot(p,q)/dot(q,q),0.,1.));\n}\nvoid mainImage(out vec4 O,vec2 u){\n    vec2 R=iResolution.xy,I=floor(u/5.)*5.,C,P=I,x,W,p1,p2,p3;\n    float t=iTime*.5,M=1e3,d;\n    W=max(R.x,R.y)*vec2(N(vec2(t,0)),N(vec2(t,9)));\n    for(x=vec2(-8);x.y<=8.;x.x>8.?x.x=-8.,x.y++:x.x++){\n        C=I+x*5.;\n        p1=D(C,W);p2=D(C+vec2(0,5),W);p3=D(C+vec2(5,3),W);\n        d=min(S(u,p1,p2),min(S(u,p2,p3),S(u,p3,p1)));\n        if(d<M)M=d,P=C;\n    }\n    O=vec4(mix(vec3(.97255),.5+.5*cos(6.2832*(N(P/R*2.+t*.2)+vec3(0,.33,.67))),smoothstep(1.2,0.,M)),1);\n}*/\n\n/* 1828 CHARS\n\nfloat hash1(vec2 p) {\n    p = fract(p * vec2(0.1, 0.1));\n    p += dot(p, p + 50.0);\n    return fract(p.x * p.y);\n}\n\nfloat bruit_2d(vec2 p) {\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n\n    float a = hash1(i);\n    float b = hash1(i + vec2(1.0, 0.0));\n    float c = hash1(i + vec2(0.0, 1.0));\n    float d = hash1(i + vec2(1.0, 1.0));\n\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nvec2 deformer_point(vec2 p, float t, float w) {\n    float k = w * bruit_2d(vec2(t, 0.0)) - p.x;\n    float e = w * bruit_2d(vec2(t, 9.0)) - p.y;\n    float d = -exp(-length(vec2(k, e)) / (1.0 + 45.0 * bruit_2d(p / 30.0)) + 0.5);\n    return vec2(p.x + k * d, p.y + e * d);\n}\n\nfloat segment(vec2 p, vec2 a, vec2 b) {\n    vec2 pa = p - a;\n    vec2 ba = b - a;\n    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);\n    return length(pa - ba * h);\n}\n\nfloat triangle_contour(vec2 p, vec2 a, vec2 b, vec2 c) {\n    float d1 = segment(p, a, b);\n    float d2 = segment(p, b, c);\n    float d3 = segment(p, c, a);\n    return min(min(d1, d2), d3);\n}\n\nvec3 palette(float t) {\n    vec3 a = vec3(0.5, 0.5, 0.5);\n    vec3 b = vec3(0.5, 0.5, 0.5);\n    vec3 c = vec3(1.0, 1.0, 1.0);\n    vec3 d = vec3(0.0, 0.33, 0.67);\n    return a + b * cos(6.2831853 * (c * t + d));\n}\n\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = fragCoord;\n    float t = iTime * 0.5;\n    float pas = 5.0;\n    float w = max(iResolution.x, iResolution.y);\n\n    vec2 case_id = floor(uv / pas) * pas;\n    float dist_mini = 1000.0;\n    vec2 cellule_proche = case_id;\n\n    for (int y = -8; y <= 8; y++) {\n        for (int x = -8; x <= 8; x++) {\n            vec2 cellule = case_id + vec2(float(x), float(y)) * pas;\n\n            vec2 p1 = deformer_point(cellule, t, w);\n            vec2 p2 = deformer_point(cellule + vec2(0.0, pas), t, w);\n            vec2 p3 = deformer_point(cellule + vec2(pas, 3.0), t, w);\n\n            float d = triangle_contour(uv, p1, p2, p3);\n            if (d < dist_mini) {\n                dist_mini = d;\n                cellule_proche = cellule;\n            }\n        }\n    }\n\n    float trait = smoothstep(1.2, 0.0, dist_mini);\n    \n    vec2 uv_norm = cellule_proche / iResolution.xy;\n    float teinte = bruit_2d(uv_norm * 2.0 + vec2(t * 0.2, t * 0.2));\n    vec3 couleur_trait = palette(teinte);\n\n    vec3 couleur_fond = vec3(248.0 / 255.0, 248.0 / 255.0, 248.0 / 255.0);\n    vec3 couleur = mix(couleur_fond, couleur_trait, trait);\n\n    fragColor = vec4(couleur, 1.0);\n}\n*/",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

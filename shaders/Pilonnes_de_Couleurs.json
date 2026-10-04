@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "NXd3Dl",
+  "date": "1790095705",
+  "viewed": 37,
+  "name": "Pilonnes de Couleurs",
+  "description": "x",
+  "likes": 5,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 couleurFragment, in vec2 coordFragment) {\n    vec2 resolution = iResolution.xy;\n    float temps = iTime;\n    vec2 positionEcran = (coordFragment * 2.0 - resolution) / resolution.y;\n    \n    float distanceCamera = 2.2;\n    float angleCamera = temps * 0.3;\n    vec3 origineRayon = vec3(sin(angleCamera) * distanceCamera, 0.0, cos(angleCamera) * distanceCamera);\n    vec3 pointCible = vec3(0.0, 0.0, 0.0);\n    vec3 axeZ = normalize(pointCible - origineRayon);\n    vec3 axeX = normalize(cross(axeZ, vec3(0, 1, 0)));\n    vec3 axeY = normalize(cross(axeX, axeZ));\n    vec3 directionRayon = normalize(positionEcran.x * axeX + positionEcran.y * axeY + 1.2 * axeZ);\n\n    vec3 couleurTotale = vec3(0);\n    float distanceRayon = 0.01;\n    \n    for (float i = 0.; i < 140.; i++) {\n        vec3 positionEspace = origineRayon + distanceRayon * directionRayon;\n        \n        positionEspace.xz = mod(positionEspace.xz + 2., 4.) - 2.;\n        \n        float echelleFractale = 1.0;\n        float accumulationOrbite = 0.0;\n        \n        for (int j = 0; j < 6; j++) {\n            positionEspace = abs(positionEspace) - vec3(0.08, 0.4, 0.08);\n            \n            float rayonCarre = dot(positionEspace, positionEspace);\n            float facteurInversion = max(0.18 / clamp(rayonCarre, 0.001, 10.0), 0.45);\n            positionEspace *= facteurInversion;\n            echelleFractale *= facteurInversion;\n            \n            float cosinusRotation1 = cos(0.357), sinusRotation1 = sin(0.357);\n            positionEspace.xy = vec2(positionEspace.x * cosinusRotation1 - positionEspace.y * sinusRotation1, positionEspace.x * sinusRotation1 + positionEspace.y * cosinusRotation1);\n            \n            float cosinusRotation2 = cos(0.268), sinusRotation2 = sin(0.268);\n            positionEspace.yz = vec2(positionEspace.y * cosinusRotation2 - positionEspace.z * sinusRotation2, positionEspace.y * sinusRotation2 + positionEspace.z * cosinusRotation2);\n            \n            accumulationOrbite += length(positionEspace.xy);\n        }\n        \n        float distanceSignee = (length(positionEspace.xy) - 0.05) / echelleFractale;\n        distanceSignee = max(abs(distanceSignee), 0.0008);\n\n        float scintillement = 0.9 + 0.1 * sin(temps * 12.0 + distanceRayon * 5.0);\n        vec3 paletteCouleur = 0.5 + 0.5 * cos(accumulationOrbite * 1.25 + vec3(0.0, 1.256, 2.513));\n        \n        couleurTotale += (paletteCouleur * scintillement) / (distanceSignee * 380.0);\n        distanceRayon += distanceSignee * 0.08;\n    }\n\n    couleurFragment = vec4(tanh(couleurTotale / 6.0), 1.0);\n    couleurFragment.rgb = pow(couleurFragment.rgb, vec3(1.6));\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

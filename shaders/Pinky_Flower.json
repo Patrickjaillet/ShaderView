@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "f3dGzB",
+  "date": "1789559810",
+  "viewed": 96,
+  "name": "Pinky Flower",
+  "description": "https://github.com/Patrickjaillet\nhttps://x.com/JailletPatrick",
+  "likes": 10,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "flower"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "mat2 creerMatriceRotation(float angle) {\n    float cosinus = cos(angle);\n    float sinus = sin(angle);\n    return mat2(cosinus, -sinus, sinus, cosinus);\n}\n\nfloat calculerMotifPetale(vec2 position, float indexCouche, float temps) {\n    float rayon = length(position);\n    float angle = atan(position.y, position.x);\n    \n    vec2 directionVent = vec2(0.8, 0.5);\n    \n    float rafale = sin(temps * 1.5) * 0.5 + cos(temps * 3.2) * 0.3 + 0.8;\n    \n    float flexibilite = pow(rayon, 1.8);\n    \n    vec2 deplacementVent = directionVent * rafale * flexibilite * 0.12;\n    position -= deplacementVent;\n    \n    rayon = length(position);\n    angle = atan(position.y, position.x);\n    \n    float turbulence = sin(angle * 8.0 + temps * 4.0 + indexCouche) * 0.03 * flexibilite;\n    float battement = sin(temps * 2.5 + indexCouche * 0.4 + angle * 3.0) * 0.05 * flexibilite;\n    \n    rayon += turbulence + battement;\n    \n    vec2 deplacement = vec2(\n        sin(rayon * 2.6 + indexCouche * 1.2),\n        cos(rayon * 3.4)\n    ) * 0.02;\n    position += deplacement;\n    \n    float nombrePetales = floor(3.0 + mod(indexCouche, 3.0));\n    \n    float valeurPetale = mix(abs(sin(angle)) * 0.5, sin(nombrePetales * angle), 1.0) * (1.0 - rayon);\n    \n    return smoothstep(0.2, 0.16, abs(valeurPetale - 0.5));\n}\n\nvec3 calculerCouleurCouche(float indexCouche, float rayon, float contourPetale) {\n    vec3 couleurRoseIntense = vec3(1.0, 0.2, 0.4);\n    vec3 couleurRosePastel = vec3(1.0, 0.7, 0.8);\n    \n    float facteurMelange = sin(indexCouche + rayon * 8.0);\n    vec3 couleurAcouche = mix(couleurRoseIntense, couleurRosePastel, facteurMelange);\n    \n    float masqueDistance = smoothstep(0.0, 0.0, 0.8 - rayon);\n    float facteurEchelle = pow(0.98, indexCouche);\n    \n    return contourPetale * couleurAcouche * masqueDistance * facteurEchelle * 1.5;\n}\n\nvec3 calculerBulbe(vec2 uv, float temps, out float masqueVisibilite) {\n    float rayon = length(uv);\n    float angle = atan(uv.y, uv.x);\n\n    masqueVisibilite = smoothstep(0.15, 0.01, rayon);\n\n    float detailsGranuleux = sin(angle * 12.0) * cos(rayon * 40.0);\n    detailsGranuleux += sin(angle * 24.0 + temps) * 0.5;\n\n    vec3 couleurJauneVif = vec3(1.0, 0.85, 0.0);\n    vec3 couleurOrangeAmbre = vec3(0.95, 0.4, 0.0);\n\n    float gradientRadiique = clamp(rayon * 7.0 + detailsGranuleux * 0.15, 0.0, 1.0);\n    vec3 couleur = mix(couleurJauneVif, couleurOrangeAmbre, gradientRadiique);\n    \n    couleur += vec3(0.4, 0.3, 0.0) * smoothstep(0.05, 0.0, rayon);\n\n    return couleur;\n}\n\nvoid mainImage(out vec4 couleurFragment, in vec2 coordFragment) {\n    vec2 uv = (coordFragment - 0.5 * iResolution.xy) / iResolution.y;\n    float temps = iTime;\n\n    float zoom = 1.0 + sin(temps * 0.3) * 0.15;\n    \n    vec2 deplacementCamera = vec2(\n        sin(temps * 0.4) * 0.04 + cos(temps * 0.25) * 0.02,\n        cos(temps * 0.35) * 0.04 + sin(temps * 0.18) * 0.02\n    );\n    \n    float roulisCamera = sin(temps * 0.2) * 0.05;\n\n    vec2 uvNormalisees = (uv - deplacementCamera) * zoom * creerMatriceRotation(roulisCamera);\n\n    vec3 couleurAccumulee = vec3(0.0);\n    \n    for (float indexCouche = 0.0; indexCouche < 32.0; indexCouche++) {\n        float facteurEchelle = pow(0.98, indexCouche);\n        float angleRotation = indexCouche * 0.15;\n        \n        vec2 positionLayer = (uvNormalisees / facteurEchelle) * creerMatriceRotation(angleRotation);\n        \n        float rayon = length(positionLayer);\n        float contourPetale = calculerMotifPetale(positionLayer, indexCouche, temps);\n        \n        couleurAccumulee += calculerCouleurCouche(indexCouche, rayon, contourPetale);\n    }\n\n    vec3 couleurPetales = tanh(couleurAccumulee * 0.3);\n\n    float masqueBulbe = 0.0;\n    vec3 couleurBulbe = calculerBulbe(uvNormalisees, temps, masqueBulbe);\n    \n    vec3 couleurFinale = mix(couleurPetales, couleurBulbe, masqueBulbe);\n\n    float distCentre = length(uv);\n    float flouLens = smoothstep(0.35, 0.7, distCentre);\n    couleurFinale = mix(couleurFinale, vec3(dot(couleurFinale, vec3(0.299, 0.587, 0.114))), flouLens * 0.25);\n\n    float vignettage = smoothstep(0.8, 0.2, distCentre * 0.9);\n    couleurFinale *= vignettage;\n\n    couleurFragment = vec4(couleurFinale, 1.0);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

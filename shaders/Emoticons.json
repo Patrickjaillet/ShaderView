@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "scyXDK",
+  "date": "1788448341",
+  "viewed": 67,
+  "name": "Emoticons",
+  "description": "Procedural 2D Pattern, 2D Grid Repetition",
+  "likes": 4,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "procedural2dpattern"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 couleurFragment, vec2 coordonneeFragment) {\n    float tempsActuel = iTime;\n    vec2 resolutionEcran = iResolution.xy;\n    \n    vec2 coordonneesUV = (coordonneeFragment + coordonneeFragment - resolutionEcran) / resolutionEcran.y;\n    vec2 grilleEchelle = coordonneesUV * (3.0 + sin(tempsActuel * 0.5));\n    \n    vec2 indexCellule = floor(grilleEchelle);\n    vec2 coordonneeLocale = (fract(grilleEchelle) - 0.5) * mat2(cos(tempsActuel * 0.05 + vec4(0.0, 11.0, 33.0, 0.0)));\n    \n    float rayonPolaire = length(coordonneeLocale);\n    float anglePolaire = atan(coordonneeLocale.y, coordonneeLocale.x);\n    \n    float masqueArcCercle = smoothstep(1.0, 0.8, abs(anglePolaire + 1.0));\n    float valeurOscillationCellule = 0.5 + 0.5 * sin(tempsActuel * 3.0 + indexCellule.x + indexCellule.y);\n    \n    float contourCercleInterne = smoothstep(0.025, 0.005, abs(rayonPolaire - 0.275)) \n                               * mix(masqueArcCercle, 1.0 - masqueArcCercle, valeurOscillationCellule);\n    \n    float masqueDisquePrincipal = smoothstep(0.46, 0.44, rayonPolaire);\n    \n    vec2 coordonneeSymetrique = vec2(abs(coordonneeLocale.x), coordonneeLocale.y);\n    vec2 offsetYeux = 0.15 + 0.05 * vec2(cos(tempsActuel * 2.0 + indexCellule.y), sin(tempsActuel * 5.0 + indexCellule.x));\n    float masquePupilles = smoothstep(0.08, 0.06, length(coordonneeSymetrique - offsetYeux));\n    \n    float masqueElementsFaces = min(masquePupilles + contourCercleInterne, 1.0);\n    \n    vec4 couleurFondTeinte = 0.08 + 0.14 * clamp(abs(mod(tempsActuel * 0.18 + vec4(0.0, 4.0, 2.0, 0.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);\n    vec4 couleurJauneFace = vec4(1.0, 0.92, 0.2, 0.0) * (1.0 - masqueElementsFaces);\n    \n    float vignettageBordure = smoothstep(3.0, 1.0, length(coordonneesUV));\n    \n    couleurFragment = mix(couleurFondTeinte, couleurJauneFace, masqueDisquePrincipal) * vignettageBordure;\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

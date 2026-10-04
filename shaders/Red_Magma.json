@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "N3dGDS",
+  "date": "1789680057",
+  "viewed": 66,
+  "name": "Red Magma",
+  "description": "Magma",
+  "likes": 4,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 N, vec2 g) {\n    vec3 R = iResolution,\n         j = vec3((g + g - R.xy) / R.y, 1.8) * mat3(2, 1, 1, -1, 2, 2, -1, -2, 2) * .15,\n         a, q, k;\n    float t = iTime * .25, o = 0., e, b, c;\n\n    for (N -= N, k.y = -5.; N.a < 12. && o++ < 90.;\n         b = max(b, 0.),\n         N += (1. - exp(-b * vec4(128, 32, 8, 1))) * (.015 + .004 * cos(e - t * 8. + vec4(0, 2, 4, 0))) / (b * 80. + .05),\n         k += j * max(b, .002) * e * .18)\n\n        for (e = length(k),\n             q = k,\n             q.xz *= mat2(cos(log(e) * .6 - t + vec4(0, 11, 33, 0))),\n             a = vec3(fract((log(e) - t) * .12) * 6., exp(-q.y / e), atan(q.x, q.z) * 1.5),\n             b = a.y - .25,\n             c = 3.;\n             c < 4e2;\n             c += c)\n\n            b -= abs(dot(sin(a.yzx * c + t), cos(a.zxy * c))) * .7 / c;\n\n    N = 1. - exp(-N * N * 1.8);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

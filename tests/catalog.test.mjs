@@ -5,8 +5,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  Catalogue, SOURCES, aplatir, catalogueDepuisFichiers, chargerManifeste, collecterDepot,
-  fichierLocalDepuisFile, fichiersDepuisSelection, selectionnerJson,
+  BibliothequeAudio, Catalogue, SOURCES, aplatir, catalogueDepuisFichiers, chargerBibliothequeAudio,
+  chargerManifeste, collecterDepot, fichierLocalDepuisFile, fichiersDepuisSelection, manifesteAChange,
+  reanalyserDossierNatif, selectionnerJson, selectionnerMedia,
 } from '../js/catalog.js';
 import { analyserFichier } from '../js/shader-meta.js';
 import { encoder, shaderMultipasse, shaderSimple } from './fixtures.mjs';
@@ -36,8 +37,8 @@ function serveur(table) {
   return { fetchFn, appels };
 }
 
-function manifesteDe(fichiers) {
-  return JSON.stringify({ version: 1, fichiers });
+function manifesteDe(fichiers, media = []) {
+  return JSON.stringify({ version: 1, fichiers, media });
 }
 
 // --- aplatir ---------------------------------------------------------------
@@ -140,6 +141,148 @@ test('chargerManifeste : erreurs explicites', async () => {
   await assert.rejects(chargerManifeste({ fetchFn: serveur({ 'shaders/manifest.json': '{"version":99,"fichiers":[]}' }).fetchFn }), /non reconnu/);
   await assert.rejects(chargerManifeste({ fetchFn: serveur({ 'shaders/manifest.json': '{"version":1}' }).fetchFn }), /« fichiers » absente/);
   await assert.rejects(chargerManifeste({ fetchFn: serveur({ 'shaders/manifest.json': '{"version":1,"fichiers":[{"fichier":1}]}' }).fetchFn }), /mal formée/);
+});
+
+test('chargerManifeste : expose empreinteManifeste, identique pour un contenu identique', async () => {
+  const contenu = JSON.stringify(shaderSimple());
+  const fichier = analyserFichier('s.json', encoder(contenu));
+  const { fetchFn } = serveur({ 'shaders/manifest.json': manifesteDe([fichier]), 'shaders/s.json': contenu });
+  const catalogue = await chargerManifeste({ fetchFn });
+  assert.equal(typeof catalogue.empreinteManifeste, 'string');
+  const catalogue2 = await chargerManifeste({ fetchFn });
+  assert.equal(catalogue.empreinteManifeste, catalogue2.empreinteManifeste);
+});
+
+// --- manifesteAChange -------------------------------------------------
+
+test('manifesteAChange : même contenu, aucun changement détecté', async () => {
+  const contenu = JSON.stringify(shaderSimple());
+  const fichier = analyserFichier('s.json', encoder(contenu));
+  const texteManifeste = manifesteDe([fichier]);
+  const { fetchFn } = serveur({ 'shaders/manifest.json': texteManifeste });
+  const empreinte = (await chargerManifeste({ fetchFn: serveur({ 'shaders/manifest.json': texteManifeste, 'shaders/s.json': contenu }).fetchFn })).empreinteManifeste;
+  assert.equal(await manifesteAChange(empreinte, { fetchFn }), false);
+});
+
+test('manifesteAChange : contenu différent (fichier ajouté), changement détecté', async () => {
+  const contenu = JSON.stringify(shaderSimple());
+  const fichierA = analyserFichier('a.json', encoder(contenu));
+  const fichierB = analyserFichier('b.json', encoder(contenu));
+  const avant = await chargerManifeste({ fetchFn: serveur({ 'shaders/manifest.json': manifesteDe([fichierA]), 'shaders/a.json': contenu }).fetchFn });
+  const { fetchFn: fetchApres } = serveur({ 'shaders/manifest.json': manifesteDe([fichierA, fichierB]) });
+  assert.equal(await manifesteAChange(avant.empreinteManifeste, { fetchFn: fetchApres }), true);
+});
+
+test('manifesteAChange : manifeste temporairement inaccessible, pas un changement avéré', async () => {
+  assert.equal(await manifesteAChange('nimporte', { fetchFn: serveur({}).fetchFn }), false);
+  assert.equal(await manifesteAChange('nimporte', { fetchFn: async () => { throw new TypeError('Failed to fetch'); } }), false);
+});
+
+// --- reanalyserDossierNatif -------------------------------------------
+
+function handleFactice(fichiers) {
+  // Un seul niveau (racine) : suffisant pour exercer reanalyserDossierNatif sans
+  // réimplémenter toute l'API FileSystemDirectoryHandle.
+  return {
+    name: 'shaders',
+    async *entries() {
+      for (const [nom, contenu] of fichiers) {
+        yield [nom, { kind: 'file', getFile: async () => new File([encoder(contenu)], nom) }];
+      }
+    },
+  };
+}
+
+test('reanalyserDossierNatif : reparcourt le dossier et reflète un fichier ajouté', async () => {
+  const handle = handleFactice([['a.json', '{}']]);
+  const premier = await reanalyserDossierNatif(handle);
+  assert.deepEqual(premier.map((f) => f.nom), ['a.json']);
+
+  handle.entries = async function* () {
+    yield ['a.json', { kind: 'file', getFile: async () => new File([encoder('{}')], 'a.json') }];
+    yield ['b.json', { kind: 'file', getFile: async () => new File([encoder('{}')], 'b.json') }];
+  };
+  const second = await reanalyserDossierNatif(handle);
+  assert.deepEqual(second.map((f) => f.nom).sort(), ['a.json', 'b.json']);
+});
+
+test('reanalyserDossierNatif : permission révoquée (queryPermission), erreur explicite', async () => {
+  const handle = handleFactice([]);
+  handle.queryPermission = async () => 'denied';
+  await assert.rejects(reanalyserDossierNatif(handle), /[Pp]ermission/);
+});
+
+test('reanalyserDossierNatif : sans queryPermission (navigateur plus ancien), fonctionne tout de même', async () => {
+  const handle = handleFactice([['a.json', '{}']]);
+  const fichiers = await reanalyserDossierNatif(handle);
+  assert.deepEqual(fichiers.map((f) => f.nom), ['a.json']);
+});
+
+// --- media -------------------------------------------------------------
+
+test('chargerManifeste : expose media et lit un fichier de shaders/media/ par requête de même origine', async () => {
+  const contenu = JSON.stringify(shaderSimple());
+  const fichier = analyserFichier('s.json', encoder(contenu));
+  const { fetchFn, appels } = serveur({
+    'shaders/manifest.json': manifesteDe([fichier], ['x.png', 'y.mp3']),
+    'shaders/s.json': contenu,
+    'shaders/media/x.png': 'octets-image',
+  });
+  const catalogue = await chargerManifeste({ fetchFn });
+  assert.deepEqual(catalogue.media, new Set(['x.png', 'y.mp3']));
+  const octets = await catalogue.contenuMedia('x.png');
+  assert.equal(new TextDecoder().decode(octets), 'octets-image');
+  assert.equal(appels.at(-1), 'shaders/media/x.png');
+});
+
+test('chargerManifeste : media absent du manifeste, ensemble vide (jamais une erreur)', async () => {
+  const contenu = JSON.stringify(shaderSimple());
+  const fichier = analyserFichier('s.json', encoder(contenu));
+  const { fetchFn } = serveur({ 'shaders/manifest.json': JSON.stringify({ version: 1, fichiers: [fichier] }) });
+  const catalogue = await chargerManifeste({ fetchFn });
+  assert.deepEqual(catalogue.media, new Set());
+});
+
+test('contenuMedia : fichier de media/ absent du serveur, erreur explicite', async () => {
+  const contenu = JSON.stringify(shaderSimple());
+  const fichier = analyserFichier('s.json', encoder(contenu));
+  const { fetchFn } = serveur({ 'shaders/manifest.json': manifesteDe([fichier], ['x.png']), 'shaders/s.json': contenu });
+  const catalogue = await chargerManifeste({ fetchFn });
+  await assert.rejects(catalogue.contenuMedia('x.png'), /HTTP 404/);
+});
+
+// --- selectionnerMedia -------------------------------------------------
+
+test('selectionnerMedia : reconnaît un dossier media/ sous shaders/, ignore les sous-dossiers plus profonds', () => {
+  const f = [
+    local('shaders/media/x.png', 'x'),
+    local('shaders/media/y.mp3', 'y'),
+    local('shaders/media/sous-dossier/z.png', 'z'),
+    local('shaders/a.json', '{}'),
+  ];
+  const media = selectionnerMedia(f);
+  assert.deepEqual([...media.keys()].sort(), ['x.png', 'y.mp3']);
+});
+
+test('selectionnerMedia : media/ à la racine de la sélection (shaders/ non inclus)', () => {
+  const f = [local('media/x.png', 'x'), local('a.json', '{}')];
+  assert.deepEqual([...selectionnerMedia(f).keys()], ['x.png']);
+});
+
+test('selectionnerMedia : deux fichiers de même nom, le premier est conservé', () => {
+  const f = [local('shaders/media/x.png', 'premier'), local('shaders/media/x.png'.replace('shaders', 'autre'), 'second')];
+  const media = selectionnerMedia(f);
+  assert.equal(media.size, 1);
+});
+
+test('catalogueDepuisFichiers : expose les médias collectés et les lit à la demande', async () => {
+  const catalogue = await catalogueDepuisFichiers([
+    local('shaders/bon.json', JSON.stringify(shaderSimple('Bon'))),
+    local('shaders/media/x.png', 'octets-image'),
+  ]);
+  assert.deepEqual(catalogue.media, new Set(['x.png']));
+  assert.equal(new TextDecoder().decode(await catalogue.contenuMedia('x.png')), 'octets-image');
+  await assert.rejects(catalogue.contenuMedia('absent.png'), /absent de la sélection locale/);
 });
 
 // --- selectionnerJson ------------------------------------------------------
@@ -278,4 +421,55 @@ test('collecterDepot : repli sur la liste de fichiers sans webkitGetAsEntry', as
   const transfert = { items: [{ kind: 'file' }], files: [new File([encoder('{}')], 'plat.json')] };
   const fichiers = await collecterDepot(transfert);
   assert.deepEqual(fichiers.map((f) => f.chemin), ['plat.json']);
+});
+
+// --- Bibliothèque audio (audio/manifest.json) -------------------------
+
+function manifesteAudioDe(pistes) {
+  return JSON.stringify({ version: 1, pistes });
+}
+
+test('BibliothequeAudio.lire : lit une piste connue', async () => {
+  const lecteur = async (nom) => encoder(`contenu-${nom}`);
+  const bib = new BibliothequeAudio(['a.mp3', 'b.mp3'], lecteur);
+  assert.deepEqual(bib.pistes, ['a.mp3', 'b.mp3']);
+  assert.equal(new TextDecoder().decode(await bib.lire('a.mp3')), 'contenu-a.mp3');
+});
+
+test('BibliothequeAudio.lire : piste inconnue, erreur explicite', async () => {
+  const bib = new BibliothequeAudio(['a.mp3'], async () => new Uint8Array());
+  await assert.rejects(bib.lire('inconnue.mp3'), /absente de la bibliothèque/);
+});
+
+test('chargerBibliothequeAudio : charge la liste et lit une piste par requête de même origine', async () => {
+  const { fetchFn, appels } = serveur({
+    'audio/manifest.json': manifesteAudioDe(['track01.mp3']),
+    'audio/track01.mp3': 'octets-audio',
+  });
+  const bib = await chargerBibliothequeAudio({ fetchFn });
+  assert.deepEqual(bib.pistes, ['track01.mp3']);
+  assert.deepEqual(appels, ['audio/manifest.json']);
+  const octets = await bib.lire('track01.mp3');
+  assert.equal(new TextDecoder().decode(octets), 'octets-audio');
+  assert.equal(appels.at(-1), 'audio/track01.mp3');
+});
+
+test('chargerBibliothequeAudio : manifeste absent (404), bibliothèque vide sans exception', async () => {
+  const bib = await chargerBibliothequeAudio({ fetchFn: serveur({}).fetchFn });
+  assert.deepEqual(bib.pistes, []);
+  await assert.rejects(bib.lire('x.mp3'));
+});
+
+test('chargerBibliothequeAudio : échec réseau, bibliothèque vide sans exception', async () => {
+  const bib = await chargerBibliothequeAudio({ fetchFn: async () => { throw new TypeError('Failed to fetch'); } });
+  assert.deepEqual(bib.pistes, []);
+});
+
+test('chargerBibliothequeAudio : manifeste mal formé (version ou pistes invalides), bibliothèque vide', async () => {
+  const bibVersion = await chargerBibliothequeAudio({ fetchFn: serveur({ 'audio/manifest.json': '{"version":99,"pistes":[]}' }).fetchFn });
+  assert.deepEqual(bibVersion.pistes, []);
+  const bibPistes = await chargerBibliothequeAudio({ fetchFn: serveur({ 'audio/manifest.json': '{"version":1,"pistes":"x"}' }).fetchFn });
+  assert.deepEqual(bibPistes.pistes, []);
+  const bibJsonInvalide = await chargerBibliothequeAudio({ fetchFn: serveur({ 'audio/manifest.json': 'pas du json' }).fetchFn });
+  assert.deepEqual(bibJsonInvalide.pistes, []);
 });

@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "s3KGDm",
+  "date": "1790538917",
+  "viewed": 143,
+  "name": "Tourbillon",
+  "description": "Little WebPage for live sliders\nhttps://patrickjaillet.github.io/BS_shadertoy/",
+  "likes": 11,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "#define LONGEUR_ONDE          1.2\n#define AMPLITUDE_ONDE        0.02\n#define VITESSE_ONDE          1.0\n#define DIRECTION_ONDE        vec2(1.0, 0.7)\n\n#define SPIRALE               0.50\n#define COMPLEXITE            0.574\n#define DENSITE               0.845\n#define TAILLE                0.744\n#define OPACITE               1.0\n#define ALPHA                 1.0\n\n#define VITESSE_CAMERA        0.4\n#define VITESSE_ANIMATION     0.6\n#define VITESSE_PULSATION     1.0\n#define VITESSE_COULEUR       3.5\n\n#define ITERATIONS_MARCHING   100\n#define ITERATIONS_FRACTALE   10\n\nvec3 calculerOndeGerstner(vec2 position, float temps) {\n    float nombreOnde = 6.28318 / LONGEUR_ONDE;\n    float phase = nombreOnde * (dot(normalize(DIRECTION_ONDE), position) - VITESSE_ONDE * temps);\n    \n    return vec3(\n        DIRECTION_ONDE.x * (AMPLITUDE_ONDE * cos(phase)),\n        AMPLITUDE_ONDE * sin(phase),\n        DIRECTION_ONDE.y * (AMPLITUDE_ONDE * cos(phase))\n    );\n}\n\nvoid mainImage(out vec4 couleurSortie, in vec2 coordonneesPixel) {\n    vec2 resolution = iResolution.xy;\n    vec2 coordonneesTexture = coordonneesPixel / resolution;\n    float temps = iTime;\n\n    float tCam = temps * VITESSE_CAMERA;\n    vec2 decalageCamera = vec2(\n        sin(tCam) * 0.12 + cos(tCam * 0.5) * 0.05,\n        cos(tCam * 0.8) * 0.12 + sin(tCam * 0.3) * 0.05\n    );\n\n    float ratioAspect = resolution.y / resolution.x;\n    vec2 aspectCorrection = vec2(1.0, ratioAspect);\n    vec2 uv = (coordonneesTexture - vec2(0.5)) * aspectCorrection + decalageCamera;\n    \n    vec3 decalageOnde = calculerOndeGerstner(uv, temps);\n    uv += decalageOnde.xy;\n\n    float distanceCentre = length(uv) * (1.0 - (TAILLE * 2.0 - 1.0));\n\n    float pulsationLumiere = sin(temps * VITESSE_PULSATION) * 0.08 + sin(temps * 7.5) * 0.03;\n    float facteurTunnel = 1.0 / (distanceCentre * 1.5 + 0.15 + pulsationLumiere);\n\n    float tempsAnimation = temps * VITESSE_ANIMATION + facteurTunnel * 0.2;\n    float tempsStructure = tempsAnimation + (5.0 + sin(tempsAnimation)) * 0.11 / (distanceCentre + 1.0 - SPIRALE);\n    \n    float angleParallaxe = tempsStructure + distanceCentre * 2.5 + facteurTunnel * 0.5;\n    float sinusAngle = sin(angleParallaxe);\n    float cosinusAngle = cos(angleParallaxe);\n\n    uv *= mat2(cosinusAngle, sinusAngle, -sinusAngle, cosinusAngle);\n\n    float accumulationCouleur1 = 0.0;\n    float accumulationCouleur2 = 0.0;\n    vec3 positionEspace;\n\n    int nombreEchantillonsMax = int(float(ITERATIONS_MARCHING) * DENSITE);\n\n    for (int echantillon = 0; echantillon < ITERATIONS_MARCHING; echantillon++) {\n        if (echantillon > nombreEchantillonsMax) {\n            break;\n        }\n\n        positionEspace = 0.035 * float(echantillon) * vec3(uv, 1.0);\n        positionEspace += vec3(0.622, 0.3, -1.5 - sin(tempsAnimation * 1.3) * 0.1) + decalageOnde * 0.2;\n\n        for (int iterationPliage = 0; iterationPliage < ITERATIONS_FRACTALE; iterationPliage++) {\n            positionEspace = abs(positionEspace) / dot(positionEspace, positionEspace) - COMPLEXITE;\n        }\n\n        float intensiteProximite = dot(positionEspace, positionEspace) * 0.0015;\n        accumulationCouleur1 += intensiteProximite * (1.8 + sin(distanceCentre * 13.0 + 0.5 - tempsAnimation * 2.0));\n        accumulationCouleur2 += intensiteProximite * (1.5 + sin(distanceCentre * 13.5 + 2.2 - tempsAnimation * 3.0));\n    }\n\n    float facteurAjustementRayon = length(positionEspace.xy) * 0.01;\n    \n    accumulationCouleur1 *= smoothstep(0.56 * 0.7, 0.0, distanceCentre);\n    accumulationCouleur2 *= smoothstep(0.51 * 0.7, 0.0, distanceCentre);\n\n    float intensiteTotale = (accumulationCouleur1 + accumulationCouleur2 + facteurAjustementRayon) * 1.2;\n\n    float anglePolaire = atan(uv.y, uv.x);\n    vec3 couleurArcEnCiel = 0.5 + 0.5 * cos(anglePolaire + distanceCentre * 5.0 - temps * VITESSE_COULEUR + vec3(0.0, 2.094, 4.188));\n    \n    vec3 couleurFinale = couleurArcEnCiel * intensiteTotale;\n\n    float facteurVignetage = smoothstep(1.5, 0.5, length(coordonneesTexture - 0.5));\n    couleurFinale *= mix(0.6, 1.0, facteurVignetage);\n\n    couleurSortie = vec4(couleurFinale * OPACITE, ALPHA);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

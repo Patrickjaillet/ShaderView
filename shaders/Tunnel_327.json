@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "tunnel-327",
+  "name": "Tunnel 327",
+  "description": "",
+  "username": "",
+  "tags": [
+   "tunnel"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n\n    float coordScale = 2.0;\n    vec2 uv = (fragCoord * coordScale - iResolution.xy) / iResolution.y;\n    float time = iTime;\n\n    float rotSpeed1 = 0.2;\n    float cosRot1 = cos(time * rotSpeed1);\n    float sinRot1 = sin(time * rotSpeed1);\n    mat2 rot1 = mat2(cosRot1, -sinRot1, sinRot1, cosRot1);\n\n    float rotSpeed2 = 0.15;\n\n    float rotOffset2 = 0.3;\n    float cosRot2 = cos(time * rotSpeed2 + rotOffset2);\n    float sinRot2 = sin(time * rotSpeed2 + rotOffset2);\n    mat2 rot2 = mat2(cosRot2, -sinRot2, sinRot2, cosRot2);\n\n    float rotInnerVal = 0.70710678;\n    mat2 rotInner = mat2(rotInnerVal, -rotInnerVal, rotInnerVal, rotInnerVal);\n\n    float initialFragColor = 0.1;\n    fragColor = vec4(initialFragColor);\n\n    float totalDistance = 0.0;\n\n    float maxRaySteps = 32.0;\n    for (float i = 0.0; i < maxRaySteps; i++) {\n        vec3 rayPosition = vec3(uv * totalDistance, totalDistance);\n\n        rayPosition.xz *= rot1;\n        rayPosition.yz *= rot2;\n\n        float cameraSpeed = 0.6;\n        rayPosition.z += time * cameraSpeed;\n\n        float spaceOffset = 1.0;\n        rayPosition += spaceOffset;\n\n        float baseOrbitDistance = 9.0;\n        float minOrbitDistance = baseOrbitDistance;\n\n        float baseFractalScale = 9.0;\n        float fractalScale = baseFractalScale;\n\n        float stepDistance = 0.0;\n\n        int maxFractalIterations = 7;\n        for (int j = 0; j < maxFractalIterations; j++) {\n\n            float modPeriod = 2.0;\n\n            float modOffset = 1.0;\n            rayPosition = mod(rayPosition - modOffset, modPeriod) - modOffset;\n            rayPosition.yz *= rotInner;\n\n            minOrbitDistance = min(minOrbitDistance, length(rayPosition));\n\n            float inversionFactor = 0.6;\n            stepDistance = dot(rayPosition, rayPosition) * inversionFactor;\n\n            fractalScale /= stepDistance;\n            rayPosition /= stepDistance;\n        }\n\n        float scaleInversion = 1.0;\n        stepDistance = scaleInversion / fractalScale;\n        totalDistance += stepDistance;\n\n        float hueScaleDistance = 0.08;\n\n        float hueScaleTime = 0.04;\n        float colorHue = fract(minOrbitDistance + totalDistance * hueScaleDistance + time * hueScaleTime);\n\n        float redPhase = 1.0;\n\n        float greenPhase = 2.0 / 3.0;\n\n        float bluePhase = 1.0 / 3.0;\n        vec3 phaseOffsets = vec3(redPhase, greenPhase, bluePhase);\n\n        float waveFrequency = 20.0;\n\n        float waveOffset = 3.0;\n        vec3 p = abs(fract(colorHue + phaseOffsets) * waveFrequency - waveOffset);\n\n        float clampMin = 0.2;\n\n        float clampMax = 1.0;\n\n        float mixFactor = 0.7;\n\n        float colorIntensity = 2.6;\n        vec3 rgbColor = colorIntensity * mix(vec3(1.0), clamp(p - 1.0, clampMin, clampMax), mixFactor);\n\n        float glowIntensity = 0.014;\n\n        float falloffStep = 1200.0;\n\n        float falloffDistance = 0.15;\n        fragColor.rgb += glowIntensity / exp(stepDistance * falloffStep + totalDistance * falloffDistance) * rgbColor;\n    }\n\n    vec3 x = fragColor.rgb;\n\n    float aces_a = 2.51;\n\n    float aces_b = 0.03;\n\n    float aces_c = 1.68;\n\n    float aces_d = 0.59;\n\n    float aces_e = 0.14;\n\n    float clampFloor = 0.0;\n\n    float clampCeil = 1.0;\n\n    fragColor.rgb = clamp((x * (aces_a * x + aces_b)) / (x * (aces_c * x + aces_d) + aces_e), clampFloor, clampCeil);\n\n    float alphaChannel = 1.0;\n    fragColor.a = alphaChannel;\n}"
+  }
+ ]
+}

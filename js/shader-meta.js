@@ -17,8 +17,8 @@ export const TYPES_CANAUX = Object.freeze([
   'mic', 'music', 'musicstream', 'webcam', 'video', 'misc',
 ]);
 
-// Types de canaux dont `src` désigne un média distant de Shadertoy (voir Phase 5).
-const CANAUX_AVEC_MEDIA = new Set(['texture', 'cubemap', 'volume', 'video', 'music', 'musicstream']);
+// Types de canaux dont `src`/`filepath` désigne un média distant de Shadertoy (voir Phase 5, media.js).
+export const CANAUX_AVEC_MEDIA = new Set(['texture', 'cubemap', 'volume', 'video', 'music', 'musicstream']);
 
 const NOMBRE_CANAUX = 4;
 
@@ -142,6 +142,13 @@ function chaineNonVide(valeur) {
   return typeof valeur === 'string' && valeur.trim() !== '' ? valeur.trim() : null;
 }
 
+// `info.date` est un horodatage Unix (secondes) donné en chaîne par l'API Shadertoy.
+function entierOuNul(valeur) {
+  if (typeof valeur === 'number' && Number.isFinite(valeur)) return Math.trunc(valeur);
+  if (typeof valeur === 'string' && valeur.trim() !== '' && Number.isFinite(Number(valeur))) return Math.trunc(Number(valeur));
+  return null;
+}
+
 function triUnique(valeurs) {
   return Array.from(new Set(valeurs)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
@@ -163,6 +170,7 @@ export function analyserShader(shader, index, nomFichier) {
     auteur: null,
     description: null,
     tags: [],
+    date: null,
     passes: [],
     multipasse: false,
     son: false,
@@ -185,6 +193,7 @@ export function analyserShader(shader, index, nomFichier) {
     resultat.titre = chaineNonVide(info.name) ?? titreRepli;
     resultat.auteur = chaineNonVide(info.username);
     resultat.description = chaineNonVide(info.description);
+    resultat.date = entierOuNul(info.date);
     if (Array.isArray(info.tags)) {
       resultat.tags = info.tags.filter((t) => typeof t === 'string' && t.trim() !== '').map((t) => t.trim());
     }
@@ -233,7 +242,9 @@ export function analyserShader(shader, index, nomFichier) {
         );
       }
       canaux.push(typeCanal);
-      const src = chaineNonVide(entree.src);
+      // « filepath » (export API Shadertoy, format réellement rencontré dans shaders/)
+      // ou « src » (éditeur en ligne, exports plus anciens) : voir parser.js, parserEntree.
+      const src = chaineNonVide(entree.filepath) ?? chaineNonVide(entree.src);
       if (src !== null && CANAUX_AVEC_MEDIA.has(typeCanal)) medias.push(src);
     }
   }

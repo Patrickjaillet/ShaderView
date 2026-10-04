@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "N3dGWs",
+  "date": "1789927464",
+  "viewed": 33,
+  "name": "Descente Arc-en-ciel",
+  "description": "x",
+  "likes": 5,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 couleurFragment, vec2 coordFragment) {\n    vec3 resolution = iResolution;\n    \n    mat3 matriceCamera = mat3(\n        0.3, 0.1, 0.1,\n        0.1, -0.3, 1.0,\n        -0.09, 0.2, 1.0\n    );\n    \n    vec3 directionRayon = vec3((coordFragment * 3.0 - resolution.xy) / resolution.y, 0.5) * matriceCamera;\n    vec3 positionEspace = vec3(0.0, -8.0, 0.5);\n    vec3 coordonneesLog;\n    \n    couleurFragment = vec4(-0.5);\n    \n    float distanceLog;\n    float distanceEstimee;\n    \n    for (float iteration = 0.0; iteration < 50.0; iteration++) {\n        distanceLog = length(positionEspace);\n        \n        coordonneesLog = vec3(\n            fract((log(distanceLog) - iTime * 0.5) * 0.2) * 6.0,\n            exp(-positionEspace.y / distanceLog * 1.1),\n            atan(positionEspace.z, positionEspace.x)\n        );\n        \n        distanceEstimee = max(\n            coordonneesLog.y - 0.8 \n            - abs(dot(sin(coordonneesLog.yzx * 2.0), cos(coordonneesLog * 11.0))) * 0.13 \n            - abs(dot(sin(coordonneesLog.yzx * 160.0), cos(coordonneesLog * 1120.0))) * 0.000125, \n            0.0\n        );\n        \n        vec3 couleurEtape = (0.5 + 0.2 * cos(distanceLog * 0.5 + iTime * 0.3 + vec3(1.0, 3.0, 5.0))) * 0.04;\n        couleurFragment.xyz += min(0.3 - couleurFragment.xyz, distanceEstimee * 3.0) * couleurEtape;\n        \n        positionEspace += directionRayon * distanceEstimee * distanceLog * 0.2;\n    }\n    \n    couleurFragment.xyz *= couleurFragment.xyz / (couleurFragment.xyz * (couleurFragment.xyz + 0.4) + 0.2);\n    couleurFragment.w = 1.0;\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

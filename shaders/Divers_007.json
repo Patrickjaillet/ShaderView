@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "divers-007",
+  "name": "Divers 007",
+  "description": "",
+  "username": "",
+  "tags": [
+   "divers"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "#define MAX_STEPS 110\n#define MAX_DIST 50.0\n#define SURF_DIST 0.001\n\nmat2 rot(float a) {\n    float s = sin(a), c = cos(a);\n    return mat2(c, -s, s, c);\n}\n\nfloat hash12(vec2 p) {\n    vec3 p3 = fract(vec3(p.xyx) * 0.1031);\n    p3 += dot(p3, p3.yzx + 33.33);\n    return fract((p3.x + p3.y) * p3.z);\n}\n\nfloat smin(float a, float b, float k) {\n    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);\n    return mix(b, a, h) - k * h * (1.0 - h);\n}\n\nfloat sdCapsule(vec3 p, vec3 a, vec3 b, float r) {\n    vec3 pa = p - a, ba = b - a;\n    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);\n    return length(pa - ba * h) - r;\n}\n\nvec2 map(vec3 p) {\n    float t = mod(iTime, 6.0);\n    float approach = smoothstep(0.0, 3.5, t);\n    float pause = smoothstep(3.5, 4.2, t);\n    float jump = smoothstep(4.2, 4.6, t) * (1.0 - smoothstep(5.0, 5.5, t));\n\n    float zPos = mix(18.0, 3.0, approach);\n    zPos = mix(zPos, -5.0, jump);\n\n    float yJump = jump * 2.2;\n\n    vec3 q = p;\n    q.z -= zPos;\n    q.y -= 0.6 + yJump;\n\n    if(jump > 0.01) q.xy *= rot(sin(iTime * 100.0) * 0.08);\n\n    float dBody = length(q / vec3(0.5, 0.4, 0.75)) - 1.0;\n    vec3 hP = q - vec3(0.0, -0.1, 0.9);\n    float dHead = length(hP) - 0.28;\n\n    vec3 mP = hP; mP.x = abs(mP.x);\n    mP.xy *= rot(0.2 + jump * 1.5 + pause * 0.3);\n    float dMand = sdCapsule(mP, vec3(0.1, 0.0, 0.0), vec3(0.2, -0.4, 0.3), 0.03);\n\n    float d = smin(dBody * 0.4, dHead, 0.15);\n    d = smin(d, dMand, 0.05);\n\n    vec3 lP = q; \n    float side = lP.x > 0.0 ? 1.0 : -1.0;\n    lP.x = abs(lP.x);\n\n    float dLegs = 1e10;\n    for(int i=0; i<4; i++) {\n        float fi = float(i);\n        float stepT = iTime * 24.0 + fi * 2.0 + (side > 0.0 ? 0.0 : 3.14);\n        if(pause > 0.01) stepT *= 0.1;\n\n        vec3 root = vec3(0.2, 0.0, 0.3 - fi * 0.4);\n        vec3 target = vec3(2.2, -0.9, 0.3 - fi * 0.4 + sin(stepT) * 1.0);\n        if(jump > 0.01) target = mix(target, vec3(0.2, -3.0, 4.0), jump);\n\n        target.y += max(0.0, cos(stepT)) * 0.8 * (1.0 - pause);\n        vec3 knee = mix(root, target, 0.5) + vec3(0.6, 1.5 * (1.0 - jump), -0.5 * jump);\n        float l = smin(sdCapsule(lP, root, knee, 0.07), sdCapsule(lP, knee, target, 0.05), 0.05);\n        dLegs = min(dLegs, l);\n    }\n    d = smin(d, dLegs, 0.06);\n\n    float ground = p.y + 1.0;\n    float finalD = min(d, ground);\n    float id = (d < ground) ? 2.0 : 1.0;\n    if(length(hP - vec3(0.12, 0.1, 0.15)) < 0.08) id = 3.0; \n\n    return vec2(finalD, id);\n}\n\nvec3 getNormal(vec3 p) {\n    vec2 e = vec2(0.001, 0.0);\n    return normalize(vec3(map(p + e.xyy).x - map(p - e.xyy).x, \n                          map(p + e.yxy).x - map(p - e.yxy).x, \n                          map(p + e.yyx).x - map(p - e.yyx).x));\n}\n\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n\n    vec3 ro = vec3(0.0, 1.3, 0.0);\n    vec3 rd = normalize(vec3(uv, 1.1));\n\n    float t = 0.0, id = 0.0;\n    for(int i=0; i<MAX_STEPS; i++) {\n        vec2 res = map(ro + rd * t);\n        if(res.x < SURF_DIST || t > MAX_DIST) break;\n        t += res.x * 0.5; \n        id = res.y;\n    }\n\n    vec3 col = vec3(0.01, 0.01, 0.03);\n\n    if(t < MAX_DIST) {\n        vec3 p = ro + rd * t;\n        vec3 n = getNormal(p);\n        vec3 ld = normalize(ro - p);\n\n        float diff = max(dot(n, ld), 0.1);\n        float spec = pow(max(dot(reflect(-ld, n), -rd), 0.0), 32.0);\n        float ao = clamp(1.0 - t/20.0, 0.0, 1.0);\n\n        if(id > 2.5) col = vec3(1.5, 0.0, 0.0) * (0.5 + 0.5 * sin(iTime * 60.0));\n        else if(id > 1.5) col = vec3(0.05) * diff + spec * 0.6;\n        else col = vec3(0.15) * diff * (0.5 + 0.5 * hash12(p.xz));\n\n        col *= (4.0 / (1.0 + t * t * 0.15)) * ao;\n        col = mix(col, vec3(0.01, 0.01, 0.03), 1.0 - exp(-0.04 * t));\n    }\n\n    float tMod = mod(iTime, 6.0);\n    if(tMod > 4.4 && tMod < 5.2) {\n        float glare = hash12(uv + vec2(iTime));\n        col += vec3(0.3, 0.0, 0.0) * glare * smoothstep(4.4, 4.6, tMod);\n    }\n\n    fragColor = vec4(pow(col, vec3(0.4545)), 1.0);\n}"
+  }
+ ]
+}

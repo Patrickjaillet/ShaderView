@@ -1,0 +1,33 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "s3t3zr",
+  "date": "1788713082",
+  "viewed": 103,
+  "name": "Hyperbolic Log-Appolonian",
+  "description": "x",
+  "likes": 6,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal",
+   "hyperbolic",
+   "logmandelbox"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "vec3 convertirHueVersRVB(float teinte) {\n    vec3 decalage = vec3(0.0, -1.6, 1.0 / 3.0);\n    vec3 onde = abs(fract(vec3(teinte) + decalage) * 6.0 - 1.2);\n    return clamp(onde, 0.0, 1.0);\n}\n\nmat3 calculerMatriceRotationAxe(vec3 axe, float angle) {\n    vec3 axeNormalise = normalize(axe);\n    float sinus = sin(angle);\n    float cosinus = cos(angle);\n    float unMoinsCos = 1.0 - cosinus;\n\n    return mat3(\n        axeNormalise.x * axeNormalise.x * unMoinsCos + cosinus,\n        axeNormalise.y * axeNormalise.x * unMoinsCos + axeNormalise.z * sinus,\n        axeNormalise.z * axeNormalise.x * unMoinsCos - axeNormalise.y * sinus,\n\n        axeNormalise.x * axeNormalise.y * unMoinsCos - axeNormalise.z * sinus,\n        axeNormalise.y * axeNormalise.y * unMoinsCos + cosinus,\n        axeNormalise.z * axeNormalise.y * unMoinsCos + axeNormalise.x * sinus,\n\n        axeNormalise.x * axeNormalise.z * unMoinsCos + axeNormalise.y * sinus,\n        axeNormalise.y * axeNormalise.z * unMoinsCos - axeNormalise.x * sinus,\n        axeNormalise.z * axeNormalise.z * unMoinsCos + cosinus\n    );\n}\n\nvec3 transformerLogPolaire(vec3 position, float temps, out float normePosition) {\n    position /= dot(position, position);\n    normePosition = length(position);\n\n    float composanteLog = log(normePosition) + temps / 6.3;\n    float composanteY = position.y / normePosition - 1.5;\n    float composanteAngle = atan(position.z, position.x);\n\n    return vec3(composanteLog, composanteY, composanteAngle);\n}\n\nfloat evaluerDistanceFractale(vec3 positionEspace, out float valeurTeinte) {\n    valeurTeinte = 9.0;\n    float facteurEchelle = 1.0;\n\n    vec3 positionRepetee = mod(positionEspace - 1.0, 2.0) - 1.0;\n\n    for (int iteration = 0; iteration < 9; iteration++) {\n        positionRepetee = -1.0 + 2.0 * fract(positionRepetee * 0.5 + 0.5);\n        \n        float rayonCarre = dot(positionRepetee, positionRepetee);\n        float facteurPliage = 1.2 / clamp(rayonCarre, 0.2, 1.0);\n\n        positionRepetee *= facteurPliage;\n        facteurEchelle *= facteurPliage;\n        \n        valeurTeinte = min(valeurTeinte, length(positionRepetee));\n    }\n\n    return (length(positionRepetee.xz) - 0.3) / facteurEchelle * 0.1;\n}\n\nvoid mainImage(out vec4 couleurFragment, in vec2 coordFragment) {\n    vec2 resolution = iResolution.xy;\n    float temps = iTime;\n\n    vec3 origineRayon = vec3(0.0, 0.0, -1.0);\n    vec3 positionEspace = origineRayon;\n\n    float distanceEstimee = 0.0;\n    float normePosition = 0.0;\n    float valeurTeinte = 0.0;\n\n    couleurFragment = vec4(0.0);\n\n    mat3 matriceRotation = calculerMatriceRotationAxe(origineRayon + 0.03, temps);\n\n    for (float etape = 0.0; etape < 100.0; etape += 1.0) {\n        vec3 vecteurEcran = vec3(coordFragment, 0.0);\n        vec3 directionAvancement = (1.0 - vecteurEcran / resolution.y) * matriceRotation;\n\n        positionEspace = (origineRayon += distanceEstimee * directionAvancement);\n\n        vec3 positionTransformee = transformerLogPolaire(positionEspace, temps, normePosition);\n\n        distanceEstimee = evaluerDistanceFractale(positionTransformee, valeurTeinte);\n\n        vec3 teinteAjustee = convertirHueVersRVB(valeurTeinte + temps * 0.74);        \n        vec3 couleurEtape = mix(vec3(0.0), teinteAjustee, 0.7);\n\n        float luminositeEtape = 0.02 / exp(distanceEstimee * 1000.0);\n        couleurFragment += vec4(couleurEtape * luminositeEtape, 0.0);\n    }\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

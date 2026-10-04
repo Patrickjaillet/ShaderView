@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "raymarching-091",
+  "name": "Raymarching 091",
+  "description": "",
+  "username": "",
+  "tags": [
+   "raymarching"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "void mainImage(out vec4 o, vec2 c) {\n    vec3 r = iResolution, p = vec3(0, 0, -iTime);\n      for(int i; i < 40; i++)      \n        p += vec3((c+c-r.xy)/r.y, 1) * (length(sin(p) * cos(p.yzx)) - .4);\n        o = sin(p + iTime).xyzz;\n}"
+  }
+ ]
+}

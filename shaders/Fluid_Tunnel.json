@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "fXdGDS",
+  "date": "1789746757",
+  "viewed": 27,
+  "name": "Fluid Tunnel",
+  "description": "\"Motstand er nytteløs\" GLSL demo with music made on Cubase Pro+VSTi\nhttps://x.com/JailletPatrick/status/2100922160864764242?s=20",
+  "likes": 2,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 couleurSortie, vec2 coordPixel) {\n    vec2 resolution = iResolution.xy;\n    vec3 couleurAccumulee = vec3(0.0);\n    float tempsAnime = iTime * 0.156;\n    mat2 matriceRotationConstante = mat2(cos(mod(tempsAnime * 0.3, 14e-5) + vec4(0, 11, 33, 0)));\n\n    vec2 coordNormalisees = (coordPixel + coordPixel - resolution) / resolution.y;\n\n    float zoomCinementique = 1.2 + sin(iTime * 1.2) * 0.6;\n    float distanceFocale = 1.716 * zoomCinementique;\n\n    float amplitudeTorsion = sin(iTime * 1.5) * 0.8;\n\n    for (int echantillonX = 0; echantillonX < 2; echantillonX++) {\n        for (int echantillonY = 0; echantillonY < 2; echantillonY++) {\n            vec2 decalageAA = (vec2(float(echantillonX), float(echantillonY)) - 0.5) * 0.5;\n            vec2 positionSousPixel = (((coordPixel + decalageAA) * 2.0 - resolution) / resolution.y) / zoomCinementique;\n\n            float angleTorsion = positionSousPixel.y * amplitudeTorsion;\n            float cosAngle = cos(angleTorsion);\n            float sinAngle = sin(angleTorsion);\n            positionSousPixel = mat2(cosAngle, -sinAngle, sinAngle, cosAngle) * positionSousPixel;\n\n            vec3 directionRayon = normalize(vec3(positionSousPixel, distanceFocale));\n\n            vec3 couleurSousEchantillon = vec3(0.0);\n            float densiteAccumulee = 0.0;\n            float derniereDistance = 1.0;\n\n            for (float pas = 1.0, distanceProfondeur = 1.0, distanceSurface, poidsLumiere, echelleGlobale, etapePliage, facteurInversion; pas++ < 110.0 && densiteAccumulee < 12.0; distanceProfondeur += distanceSurface * 0.55 + 0.0012) {\n                derniereDistance = distanceProfondeur;\n                vec3 positionEspace = directionRayon * distanceProfondeur;\n                \n                float rayonRayon = length(positionEspace.xy);\n                float anglePolar = atan(positionEspace.y, positionEspace.x);\n                float axeProfondeur = positionEspace.z - tempsAnime * 3.0;\n                float coordonneeTordue = rayonRayon * 2.0 - axeProfondeur * 0.8;\n                \n                positionEspace.xy = mat2(cos(coordonneeTordue), sin(coordonneeTordue), -sin(coordonneeTordue), cos(coordonneeTordue)) * vec2(log(rayonRayon + 0.001) - tempsAnime * 0.5, cos(anglePolar * 2.0));\n                positionEspace.z = abs(mod(axeProfondeur - 3.0, 6.0) - 3.0);\n                positionEspace = abs(fract(positionEspace) - 0.778);\n\n                for (echelleGlobale = 2.0, etapePliage = 0.0; etapePliage++ < 5.0; positionEspace = positionEspace * facteurInversion - vec3(0.7, 0.5, 0.8), echelleGlobale *= facteurInversion) {\n                    positionEspace = 1.3635 - abs(positionEspace - 0.0024);\n                    positionEspace.xy *= matriceRotationConstante;\n                    facteurInversion = 1.35 / clamp(dot(positionEspace, positionEspace), 0.12, 1.0);\n                }\n\n                distanceSurface = abs(length(max(abs(positionEspace) - vec3(0.3, 0.6, 0.3), 313e-6)) - 0.0024) / echelleGlobale;\n                \n                float approximationNormale = abs(dot(positionEspace, directionRayon));\n                poidsLumiere = 0.00035 / (distanceSurface * distanceSurface * 1.8 + 0.002) * (0.4 + 0.6 * approximationNormale);\n                \n                densiteAccumulee += poidsLumiere;\n                \n                vec3 couleurBase = 0.5 + 0.5 * cos(vec3(4.5, 1.2, 0.1) + coordonneeTordue * 1.5 + anglePolar * 2.0 + axeProfondeur * 0.5);\n                vec3 couleurSombre = mix(vec3(0.001, 0.002, 0.005), couleurBase * 0.25, smoothstep(0.01, 0.3, poidsLumiere));\n                \n                float intensiteBord = smoothstep(0.005, 0.0, distanceSurface) * 1.2;\n                vec3 couleurBord = vec3(0.05, 0.25, 0.6) * intensiteBord;\n                \n                couleurSousEchantillon += (couleurSombre + couleurBord) * poidsLumiere;\n            }\n\n            float distanceFocaleCible = 2.5 + sin(iTime * 0.8) * 1.0;\n            float flouProfondeurDeChamp = smoothstep(0.0, 3.0, abs(derniereDistance - distanceFocaleCible));\n            couleurSousEchantillon = mix(couleurSousEchantillon, couleurSousEchantillon * 0.4, flouProfondeurDeChamp * 0.6);\n\n            float absorptionBrouillard = 1.0 - exp(-derniereDistance * 0.45);\n            couleurSousEchantillon = mix(couleurSousEchantillon, vec3(0.0005, 0.001, 0.002), absorptionBrouillard);\n\n            couleurAccumulee += couleurSousEchantillon;\n        }\n    }\n    \n    couleurAccumulee *= 0.25;\n\n    couleurAccumulee = couleurAccumulee * 1.8 - 0.5 * dot(couleurAccumulee, vec3(0.299, 0.587, 0.114));\n    \n    couleurAccumulee = max(vec3(0.0), couleurAccumulee - 0.025);\n    couleurAccumulee = (couleurAccumulee * (2.81 * couleurAccumulee + 0.005)) / (couleurAccumulee * (2.43 * couleurAccumulee + 0.55) + 0.35);\n    \n    float decalageChromatique = (0.0015 + 0.002 * sin(iTime * 2.0)) * length(coordNormalisees);\n    vec3 couleurFinale;\n    couleurFinale.r = couleurAccumulee.r;\n    couleurFinale.g = couleurAccumulee.g;\n    couleurFinale.b = couleurAccumulee.b * (1.0 + decalageChromatique * 2.5);\n\n    float grain = (fract(sin(dot(coordPixel, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 0.005;\n    couleurFinale += grain;\n\n    couleurSortie = vec4(pow(clamp(couleurFinale, 0.0, 1.0), vec3(1.0 / 2.2)), 1.0);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

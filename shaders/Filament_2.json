@@ -1,0 +1,32 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "s3d3DH",
+  "date": "1789332354",
+  "viewed": 42,
+  "name": "Filament 2",
+  "description": "x",
+  "likes": 5,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal",
+   "parallax"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "float calculerDistanceTorsionGyrus(vec3 positionEspace) {\n    positionEspace.xy *= mat2(cos(positionEspace.z * 0.1 + vec4(0.0, 33.0, 11.0, 0.0)));\n    return length(sin(positionEspace) + cos(positionEspace.zxy)) - 0.5;\n}\n\nvec3 calculerNormaleGeometrie(vec3 positionEspace) {\n    vec2 decalageEpsilon = vec2(0.001, 0.0);\n    return normalize(vec3(\n        calculerDistanceTorsionGyrus(positionEspace + decalageEpsilon.xyy) - calculerDistanceTorsionGyrus(positionEspace - decalageEpsilon.xyy),\n        calculerDistanceTorsionGyrus(positionEspace + decalageEpsilon.yxy) - calculerDistanceTorsionGyrus(positionEspace - decalageEpsilon.yxy),\n        calculerDistanceTorsionGyrus(positionEspace + decalageEpsilon.yyx) - calculerDistanceTorsionGyrus(positionEspace - decalageEpsilon.yyx)\n    ));\n}\n\nvoid mainImage(out vec4 couleurFragment, vec2 coordonneeFragment) {\n    vec3 resolutionEcran = iResolution;\n    \n    vec3 positionOrigineRayon = vec3(2.0 * sin(iTime * 0.5), cos(iTime * 0.3), iTime);\n    vec3 positionCibleCamera = positionOrigineRayon + vec3(sin(iTime * 0.2), cos(iTime * 0.15), 2.0);\n    \n    vec3 axeDirectionAvant = normalize(positionCibleCamera - positionOrigineRayon);\n    vec3 axeDirectionDroite = normalize(cross(axeDirectionAvant, vec3(0.0, 1.0, 0.0)));\n    vec3 axeDirectionHaut = normalize(cross(axeDirectionDroite, axeDirectionAvant));\n    \n    vec2 coordonneesUV = (coordonneeFragment - 0.5 * resolutionEcran.xy) / resolutionEcran.y;\n    vec3 directionRayon = normalize(coordonneesUV.x * axeDirectionDroite + coordonneesUV.y * axeDirectionHaut + 1.5 * axeDirectionAvant);\n    \n    vec3 positionCouranteRayon = positionOrigineRayon;\n    float distanceParcourueTotal = 0.0;\n    \n    for (int etapeMarchage = 0; etapeMarchage < 64; etapeMarchage++) {\n        positionCouranteRayon = positionOrigineRayon + directionRayon * distanceParcourueTotal;\n        vec3 positionTransformee = positionCouranteRayon;\n        positionTransformee.xy *= mat2(cos(positionTransformee.z * 0.1 + vec4(0.0, 33.0, 11.0, 0.0)));\n        \n        float distanceEstimationSurface = length(sin(positionTransformee) + cos(positionTransformee.zxy)) - 0.5;\n        if (distanceEstimationSurface < 0.001 || distanceParcourueTotal > 20.0) break;\n        distanceParcourueTotal += distanceEstimationSurface * 0.5;\n    }\n    \n    vec3 couleurComposee = vec3(0.0);\n    \n    if (distanceParcourueTotal < 20.0) {\n        vec3 positionImpactSurface = positionOrigineRayon + directionRayon * distanceParcourueTotal;\n        vec3 normaleSurface = calculerNormaleGeometrie(positionImpactSurface);\n        \n        vec3 positionSourceLumiere = vec3(2.0 * sin(iTime * 0.8), cos(iTime * 0.5), positionOrigineRayon.z + 3.5 + sin(iTime * 1.2) * 1.5);\n        vec3 directionVersLumiere = positionSourceLumiere - positionImpactSurface;\n        float distanceVersLumiere = length(directionVersLumiere);\n        directionVersLumiere /= distanceVersLumiere;\n        \n        float attenuationDistanceLumiere = 1.0 / (1.0 + 0.1 * distanceVersLumiere + 0.03 * distanceVersLumiere * distanceVersLumiere);\n        \n        float composanteDiffuse = max(0.0, dot(normaleSurface, directionVersLumiere));\n        float composanteSpeculaire = pow(max(0.0, dot(reflect(-directionVersLumiere, normaleSurface), -directionRayon)), 32.0);\n        \n        float motifTextureVolumetrique = sin(positionImpactSurface.x * 4.0) * cos(positionImpactSurface.y * 4.0) * sin(positionImpactSurface.z * 4.0);\n        vec3 couleurAlbedoSurface = mix(vec3(0.2, 0.35, 0.6), vec3(0.7, 0.85, 1.0), smoothstep(-0.2, 0.2, motifTextureVolumetrique));\n        \n        float ondeLumineuseOndulante = sin(positionImpactSurface.z * 2.5 - iTime * 4.0) * 0.5 + 0.5;\n        vec3 couleurOndeLumineuse = mix(vec3(0.2, 0.5, 1.0), vec3(1.0, 0.6, 0.2), ondeLumineuseOndulante);\n        \n        vec3 lumiereAmbiante = vec3(0.18, 0.22, 0.3);\n        vec3 lumiereDiffuse = couleurAlbedoSurface * composanteDiffuse * vec3(1.4, 1.3, 1.1) * attenuationDistanceLumiere * 2.8;\n        vec3 lumiereSpeculaire = vec3(1.0, 0.9, 0.75) * composanteSpeculaire * attenuationDistanceLumiere * 2.5;\n        vec3 pulsionEmissionLumineuse = couleurOndeLumineuse * ondeLumineuseOndulante * 0.8 * attenuationDistanceLumiere;\n        \n        couleurComposee = lumiereAmbiante + lumiereDiffuse + lumiereSpeculaire + pulsionEmissionLumineuse;\n    } else {\n        couleurComposee = vec3(0.08, 0.1, 0.16);\n    }\n    \n    couleurComposee = mix(couleurComposee, vec3(0.08, 0.1, 0.16), 1.0 - exp(-distanceParcourueTotal * 0.06));\n    couleurComposee = pow(couleurComposee, vec3(0.4545));\n    \n    couleurFragment = vec4(couleurComposee, 1.0);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "7Xd3RS",
+  "date": "1789423044",
+  "viewed": 332,
+  "name": "Fish Fish Fish",
+  "description": "https://patrickjaillet.github.io/Shadertoy-Exemples",
+  "likes": 20,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fish"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 cf, vec2 CF) {\n    vec2 UVN = (CF + CF - iResolution.xy) / iResolution.y;\n    \n    cf = vec4(0.);\n    \n    float T = iTime * 2.;\n    float IP = 6000.;\n    float OR, HZ, DC, PO;\n\n    for (; IP >= 0.; IP -= 20. / 3.) {\n        OR = 5. * cos(IP / 44.);\n        HZ = IP / 506. - 15.;\n        DC = length(vec2(OR, HZ)) / 3.;\n        PO = DC / 2. - T / 3. + mod(IP, 2.) * 3.;\n\n        float CX = (93.22 + DC * DC + OR * OR) * sin(PO) \n                         + DC * DC * DC / 4. * cos(T * 3. - DC * DC / 4.);\n        \n        float CY = -99. * cos(PO / 2.) \n                         - 4. * sin(OR + OR) \n                         - IP * OR * HZ / 19481. / sin(HZ / 2.);\n\n        vec2 PP = vec2(CX, CY) / 160.8;\n\n        vec3 CP = 0.5 + 0.299 * cos(PO + T + vec3(0., 1., 2.));\n        float RG = length(UVN - PP) + 0.001;\n\n        cf.rgb += CP * (0.000468 / RG);\n    }\n\n    cf = pow(cf, vec4(1.7));\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "s3K3RW",
+  "date": "1790113378",
+  "viewed": 101,
+  "name": "Pots de Plantes",
+  "description": "https://patrickjaillet.github.io/Babylon_shadertoy",
+  "likes": 16,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "/* Petite Page web pour modifier le shader en live:\n- https://patrickjaillet.github.io/Babylon_shadertoy\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/\n// Configuration de la caméra et du Raymarching\n#define NOMBRE_PASCAL_MAX 100.0\n#define POSITION_CAMERA vec3(0.0, 0.45, -3.0)\n#define ECHELLE_CHAMP_VISION 1.6\n\n// Constantes de rotation\n#define VECTEUR_ROTATION vec4(0.0, 1.57, -1.57, 0.0)\n#define ANGLE_ROTATION_FRACTALE 24.8\n\n// Initialisation de la scène\n#define DISTANCE_RAYON_INITIALE 9.7\n#define ECHELLE_INITIALE 2.6\n#define DISTANCE_FORME_INITIALE 29.6\n#define ITERATIONS_FRACTALE 9\n\n// Transformation de la fractale\n#define DECALAGE_PLIAGE 0.5\n#define REGULARISATION 0.07\n#define HAUTEUR_PLIAGE 1.71\n\n// Rendu volumétrique et couleurs\n#define DECALAGE_EXP_LUMIERE 5.5\n#define SEUIL_HAUTEUR 1.0\n#define COULEUR_DE_BASE vec3(2.8)\n#define COULEUR_HAUTEUR vec3(-0.4)\n#define COULEUR_ACCENTUATION vec3(0.0, 0.15, 0.0)\n\n// Transitions de couleur\n#define DECALAGE_TRANSITION_COULEUR 0.43\n#define ECHELLE_TRANSITION_COULEUR 0.3\n#define ECHELLE_ATTENUATION_HAUTEUR 0.31\n\n#define VALEUR_ALPHA 1.0\n\nvoid mainImage(out vec4 couleurSortie, in vec2 coordonneesFragment)\n{\n    vec3 positionCamera = POSITION_CAMERA;\n    vec3 positionRayon;\n    vec3 couleurAccumulee = positionCamera - positionCamera;\n    float distancePas = 0.;\n    float facteurEchelle;\n    float distanceForme;\n    float facteurEchelleAccumule;\n    float compteurIteration = 0.;\n    float distanceAccumulee;\n\n    for(; compteurIteration++ < NOMBRE_PASCAL_MAX;)\n    {\n        positionRayon = positionCamera += vec3((coordonneesFragment.xy \n            - .5 * iResolution.xy) / iResolution.y, ECHELLE_CHAMP_VISION) * distancePas;\n        positionRayon.xz *= mat2(cos(iTime + VECTEUR_ROTATION));\n        distancePas = DISTANCE_RAYON_INITIALE;\n        facteurEchelleAccumule = ECHELLE_INITIALE;\n        distanceForme = DISTANCE_FORME_INITIALE;\n\n        for(int indice = 0; indice < int(ITERATIONS_FRACTALE); indice++)\n        {\n            positionRayon.xz = abs(positionRayon.xz * mat2(cos(ANGLE_ROTATION_FRACTALE + VECTEUR_ROTATION))) - DECALAGE_PLIAGE;\n            distanceAccumulee = dot(positionRayon, positionRayon);\n            facteurEchelleAccumule /= distanceAccumulee;\n            positionRayon /= distanceAccumulee + REGULARISATION;\n            positionRayon.y = HAUTEUR_PLIAGE - positionRayon.y;\n            distanceForme = min(distanceForme, length(positionRayon.xz));\n            distancePas = min(distancePas, max(length(positionRayon.xz), positionRayon.y) \n                / facteurEchelleAccumule);\n        }\n\n        facteurEchelle = step(SEUIL_HAUTEUR, positionCamera.y);\n        couleurAccumulee += exp(-positionRayon.y / facteurEchelleAccumule - DECALAGE_EXP_LUMIERE) * mix(mix(COULEUR_DE_BASE, \n            COULEUR_HAUTEUR, facteurEchelle), COULEUR_ACCENTUATION, clamp((DECALAGE_TRANSITION_COULEUR - distanceForme) \n            / ECHELLE_TRANSITION_COULEUR, 0., 1.) * clamp(positionCamera.y / ECHELLE_ATTENUATION_HAUTEUR, 0., 1.) * (1. - facteurEchelle));\n        distancePas = min(distancePas, positionCamera.y);\n    }\n\n    couleurSortie = vec4(couleurAccumulee, VALEUR_ALPHA);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

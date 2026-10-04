@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "N3tGWs",
+  "date": "1789834345",
+  "viewed": 64,
+  "name": "Cercles de Cumulus",
+  "description": "x",
+  "likes": 11,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "mat2 MatriceRotation2D(float angle) {\n    return mat2(cos(angle), sin(angle), -sin(angle), cos(angle));\n}\n\nvoid orienterVecteur(inout vec3 vecteur, vec2 anglesOrientation) {\n    vecteur.yz *= MatriceRotation2D(anglesOrientation.y);\n    vecteur.xz *= MatriceRotation2D(anglesOrientation.x);\n}\n\nvoid mainImage(out vec4 couleurFragment, vec2 coordFragment) {\n    vec2 resolution = iResolution.xy;\n    vec2 positionSouris = iMouse.z > 0.0 ? (iMouse.xy - resolution * 0.5) / resolution.y * 4.0 : vec2(iTime, sin(iTime * 0.6)) * 0.5;\n    \n    vec3 origineRayon = vec3(0.0, 0.0, -18.0);\n    vec3 directionRayon = normalize(vec3(coordFragment + coordFragment - resolution, resolution.y * 2.9));\n    \n    orienterVecteur(directionRayon, positionSouris);\n    orienterVecteur(origineRayon, positionSouris);\n    \n    couleurFragment = vec4(0.0);\n    \n    float distanceRayon = 0.4;\n    float distanceSurface;\n    float frequenceBruit;\n    float angleSecteur;\n    float amplitudeBruit;\n    \n    vec3 positionPoint;\n    vec3 positionBruit;\n    vec3 grillePoint;\n    vec3 interpolationPoint;\n\n    for(int i = 0; i < 91; i++) {\n        frequenceBruit = 0.4;\n        amplitudeBruit = 0.5;\n        \n        positionPoint = origineRayon + directionRayon * distanceRayon;\n        positionBruit = positionPoint * 2.7 + iTime;\n        \n        for(int k = 0; k < 3; k++) {\n            grillePoint = floor(positionBruit);\n            interpolationPoint = fract(positionBruit);\n            interpolationPoint = interpolationPoint * interpolationPoint * (3.0 - interpolationPoint - interpolationPoint);\n            \n            vec4 indicesBruit = dot(grillePoint, vec3(1.0, 57.0, 113.0)) + vec4(0.0, 57.0, 113.0, 170.0);\n            vec4 valeursAlea = mix(fract(sin(indicesBruit) * 40000.0), fract(sin(indicesBruit + 1.0) * 40000.0), interpolationPoint.x);\n            \n            frequenceBruit += amplitudeBruit * mix(mix(valeursAlea.x, valeursAlea.y, interpolationPoint.y), mix(valeursAlea.z, valeursAlea.w, interpolationPoint.y), interpolationPoint.z);\n            \n            amplitudeBruit *= 0.5;\n            positionBruit += positionBruit;\n        }\n        \n        positionPoint += sin(positionPoint.zxy * 2.0 + iTime) * 0.2;\n        \n        angleSecteur = mod(atan(positionPoint.z, positionPoint.x) + 0.098, 0.196) - 0.098;\n        positionPoint.xz = vec2(cos(angleSecteur), sin(angleSecteur)) * length(positionPoint.xz);\n        \n        positionPoint -= 4.0 * clamp(round(positionPoint * 0.25), -2.0, 2.0);\n        \n        distanceSurface = length(positionPoint) - 1.2 - frequenceBruit * 0.5;\n        \n        if (distanceSurface < 1.0) {\n            couleurFragment += 0.01 / (distanceSurface * distanceSurface + 0.01) * vec4(1.0 - frequenceBruit * vec3(0.1, 0.8, 0.5), 1.0);\n        }\n        \n        distanceRayon += max(distanceSurface, 0.04);\n    }\n    \n    couleurFragment = pow(couleurFragment * 0.03, vec4(0.6));\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

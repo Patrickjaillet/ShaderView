@@ -1,0 +1,82 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "fXyGDW",
+  "date": "1790412919",
+  "viewed": 50,
+  "name": "Stroboscope Appo",
+  "description": "x",
+  "likes": 4,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "apollonian"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [
+    {
+     "id": "4dXGR8",
+     "filepath": "/media/previz/buffer00.png",
+     "type": "buffer",
+     "channel": 0,
+     "sampler": {
+      "filter": "linear",
+      "wrap": "clamp",
+      "vflip": "true",
+      "srgb": "false",
+      "internal": "byte"
+     },
+     "published": 1
+    }
+   ],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 O, vec2 I) {\n    vec2 uv = I / iResolution.xy;\n    \n    vec3 scene = texture(iChannel0, uv).rgb;\n    \n    vec3 bloom = vec3(0.0);\n    vec2 off = 1.5 / iResolution.xy;\n    bloom += texture(iChannel0, uv + vec2(-off.x, -off.y)).rgb * 0.15;\n    bloom += texture(iChannel0, uv + vec2( off.x, -off.y)).rgb * 0.15;\n    bloom += texture(iChannel0, uv + vec2(-off.x,  off.y)).rgb * 0.15;\n    bloom += texture(iChannel0, uv + vec2( off.x,  off.y)).rgb * 0.15;\n    bloom += texture(iChannel0, uv + vec2(0.0, -off.y * 2.0)).rgb * 0.1;\n    bloom += texture(iChannel0, uv + vec2(0.0,  off.y * 2.0)).rgb * 0.1;\n    \n    vec3 col = scene + bloom * 0.65;\n    \n    col = tanh(col * col * 0.08);\n    \n    vec2 dist = uv - 0.5;\n    col *= 1.0 - dot(dist, dist) * 0.8;\n    \n    col = pow(col, vec3(0.95));\n\n    vec2 centeredUV = (I - 0.5 * iResolution.xy) / iResolution.y + 0.5;\n    float cdMask = drawCountdown(centeredUV, iTime);\n    \n    vec3 textCol = mix(vec3(0.0, 0.9, 1.0), vec3(1.0, 0.1, 0.4), sin(iTime * 10.0) * 0.5 + 0.5);\n    if (iTime >= 12.0 && iTime < 14.0) {\n        textCol = vec3(1.0, 0.8, 0.0);\n    }\n\n    col = mix(col, textCol + vec3(0.5), cdMask);\n    \n    O = vec4(col, 1.0);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  },
+  {
+   "inputs": [],
+   "outputs": [],
+   "code": "vec3 hash31(float p) {\n    vec3 p3 = fract(vec3(p) * vec3(.1031, .1030, .0973));\n    p3 += dot(p3, p3.yzx + 33.33);\n    return fract((p3.xxx + p3.yzx) * p3.zyx);\n}\n\nmat2 rot2D(float a) {\n    float c = cos(a), s = sin(a);\n    return mat2(c, -s, s, c);\n}\n\nfloat drawSegment(vec2 p, vec2 a, vec2 b) {\n    vec2 pa = p - a, ba = b - a;\n    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);\n    return smoothstep(0.08, 0.02, length(pa - ba * h));\n}\n\nfloat draw7Seg(vec2 p, int num) {\n    p = (p - vec2(0.5, 0.5)) * 2.2;\n    float mask = 0.0;\n    \n    bool segA = (num==0||num==2||num==3||num==5||num==6||num==7||num==8||num==9);\n    bool segB = (num==0||num==1||num==2||num==3||num==4||num==7||num==8||num==9);\n    bool segC = (num==0||num==1||num==3||num==4||num==5||num==6||num==7||num==8||num==9);\n    bool segD = (num==0||num==2||num==3||num==5||num==6||num==8||num==9);\n    bool segE = (num==0||num==2||num==6||num==8);\n    bool segF = (num==0||num==4||num==5||num==6||num==8||num==9);\n    bool segG = (num==2||num==3||num==4||num==5||num==6||num==8||num==9);\n\n    if(segA) mask += drawSegment(p, vec2(-0.35,  0.7), vec2( 0.35,  0.7));\n    if(segB) mask += drawSegment(p, vec2( 0.35,  0.7), vec2( 0.35,  0.0));\n    if(segC) mask += drawSegment(p, vec2( 0.35,  0.0), vec2( 0.35, -0.7));\n    if(segD) mask += drawSegment(p, vec2(-0.35, -0.7), vec2( 0.35, -0.7));\n    if(segE) mask += drawSegment(p, vec2(-0.35,  0.0), vec2(-0.35, -0.7));\n    if(segF) mask += drawSegment(p, vec2(-0.35,  0.7), vec2(-0.35,  0.0));\n    if(segG) mask += drawSegment(p, vec2(-0.35,  0.0), vec2( 0.35,  0.0));\n\n    return clamp(mask, 0.0, 1.0);\n}\n\nfloat drawG(vec2 p) {\n    p = (p - vec2(0.5, 0.5)) * 2.2;\n    float m = 0.0;\n    m += drawSegment(p, vec2(-0.35,  0.7), vec2( 0.35,  0.7));\n    m += drawSegment(p, vec2(-0.35,  0.7), vec2(-0.35, -0.7));\n    m += drawSegment(p, vec2(-0.35, -0.7), vec2( 0.35, -0.7));\n    m += drawSegment(p, vec2( 0.35, -0.7), vec2( 0.35,  0.0));\n    m += drawSegment(p, vec2( 0.0,   0.0), vec2( 0.35,  0.0));\n    return clamp(m, 0.0, 1.0);\n}\n\nfloat drawO(vec2 p) {\n    p = (p - vec2(0.5, 0.5)) * 2.2;\n    float m = 0.0;\n    m += drawSegment(p, vec2(-0.35,  0.7), vec2( 0.35,  0.7));\n    m += drawSegment(p, vec2( 0.35,  0.7), vec2( 0.35, -0.7));\n    m += drawSegment(p, vec2(-0.35, -0.7), vec2( 0.35, -0.7));\n    m += drawSegment(p, vec2(-0.35,  0.7), vec2(-0.35, -0.7));\n    return clamp(m, 0.0, 1.0);\n}\n\nfloat drawExcl(vec2 p) {\n    p = (p - vec2(0.5, 0.5)) * 2.2;\n    float m = 0.0;\n    m += drawSegment(p, vec2(0.0, 0.7), vec2(0.0, -0.2));\n    m += drawSegment(p, vec2(0.0, -0.55), vec2(0.0, -0.7));\n    return clamp(m, 0.0, 1.0);\n}\n\nfloat drawCountdown(vec2 uv, float t) {\n    if (t > 14.0) return 0.0;\n    \n    vec2 p = uv;\n    float pulse = fract(t);\n    float scale = 1.0 + (1.0 - pulse) * 0.15;\n    p = (p - 0.5) / scale + 0.5;\n\n    if (t < 12.0) {\n        int count = 12 - int(floor(t));\n        if (count >= 10) {\n            float d1 = draw7Seg(p * vec2(1.8, 1.0) - vec2(-0.35, 0.0), 1);\n            float d2 = draw7Seg(p * vec2(1.8, 1.0) - vec2(0.55, 0.0), count - 10);\n            return clamp(d1 + d2, 0.0, 1.0);\n        } else {\n            return draw7Seg(p, count);\n        }\n    } else if (t < 14.0) {\n        float g = drawG(p * vec2(2.5, 1.0) - vec2(-0.75, 0.0));\n        float o = drawO(p * vec2(2.5, 1.0) - vec2(0.25, 0.0));\n        float ex = drawExcl(p * vec2(2.5, 1.0) - vec2(1.25, 0.0));\n        return clamp(g + o + ex, 0.0, 1.0);\n    }\n    return 0.0;\n}",
+   "name": "Common",
+   "description": "",
+   "type": "common"
+  },
+  {
+   "inputs": [
+    {
+     "id": "4dfGzn",
+     "filepath": "/media/a/ec8a6ea755d34600547a5353f21f0a453f9f55ff95514383b2d80b8d71283eda.mp3",
+     "type": "music",
+     "channel": 0,
+     "sampler": {
+      "filter": "linear",
+      "wrap": "clamp",
+      "vflip": "true",
+      "srgb": "false",
+      "internal": "byte"
+     },
+     "published": 1
+    }
+   ],
+   "outputs": [
+    {
+     "id": "4dXGR8",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 O, vec2 I) {\n    float kick = texture(iChannel0, vec2(0.01, 0.25)).x;\n    float hihat = texture(iChannel0, vec2(0.85, 0.25)).x;\n    \n    float bassAmp = pow(kick, 2.5);\n    float hatAmp = pow(hihat, 2.0);\n\n    float T = iTime * 0.6 + bassAmp * 0.2;\n    float t1 = T * 0.19, t2 = T * -0.13;\n    \n    float triggerStrobo = step(0.35, bassAmp);\n    float microPulse = hatAmp * 0.5;\n    float etatStrobo = clamp(triggerStrobo + microPulse, 0.0, 1.0);\n    \n    float idSeed = floor(iTime * 10.0 + hatAmp * 20.0);\n    vec3 couleurFlash = hash31(idSeed);\n    couleurFlash = mix(couleurFlash, vec3(1.0, 0.2, 0.8), hatAmp * 0.6);\n\n    vec2 uv = (I + I - iResolution.xy) / iResolution.y;\n    \n    vec2 camShake = (hash31(iTime).xy - 0.5) * bassAmp * 0.12;\n    uv += camShake;\n\n    vec3 p, dir = normalize(vec3(uv, 1.0));\n    \n    float z = 1.5 - bassAmp * 0.35;\n    vec3 colAcc = vec3(0.0);\n    mat2 R1 = rot2D(t1);\n    mat2 R2 = rot2D(t2 + bassAmp * 0.15);\n\n    for (float i = 0.0; i < 96.0; i++) {\n        p = z * dir;\n        p.yz *= R1;\n        p.xz *= R2;\n        \n        vec3 q = p * 0.22;\n        float k = 0.3;\n        \n        for (int j = 0; j < 8; j++) {\n            q = -1.0 + 2.0 * fract(0.5 * q + 0.5);\n            float r2 = dot(q, q);\n            float f = clamp(1.0 / max(r2, 0.0001), 1.0, 8.0);\n            q *= f;\n            k *= f;\n        }\n        \n        float d = 0.01 + abs(length(q) - 0.25) / (k * 3.5);\n        z += d;\n        \n        vec3 col = couleurFlash * (cos(length(q) * 1.4 + t2) + 0.5 + bassAmp * 0.6);\n        colAcc += (col / (d * z * (24.0 - bassAmp * 10.0))) * etatStrobo;\n        \n        if (z > 20.0) break;\n    }\n    \n    O = vec4(colAcc, z);\n}",
+   "name": "Buffer A",
+   "description": "",
+   "type": "buffer"
+  }
+ ]
+}

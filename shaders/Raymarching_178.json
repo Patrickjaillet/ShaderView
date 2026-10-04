@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "raymarching-178",
+  "name": "Raymarching 178",
+  "description": "",
+  "username": "",
+  "tags": [
+   "raymarching"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "void mainImage(out vec4 o, vec2 u){\n    vec2 R = iResolution.xy;\n    float t = iTime, a = 8., d;\n    vec3 b = vec3((u+u - R)/R.y * (1. + sin(t*.3)) * -4.75, cos(t*.4)),\n         c = vec3(log(d = length(b)), exp(-b.y/d), atan(b.x, b.z));\n\n    for(d = c.y - 1.; a < 1e3; a *= 2.)\n        d -= abs(dot(sin(c.yzx*a), 1. - cos(c*a))) / a * .6;\n\n    o = vec4(smoothstep(0., 1., abs(d)*5.));\n    o.a = 0.;\n}"
+  }
+ ]
+}

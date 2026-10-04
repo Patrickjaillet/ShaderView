@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "divers-006",
+  "name": "Divers 006",
+  "description": "",
+  "username": "",
+  "tags": [
+   "divers"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "float N(vec3 p){\n    vec3 i=floor(p),f=fract(p);\n    f=f*f*(3.-2.*f);\n    float n=dot(i,vec3(1,57,113));\n    vec4 h=fract(sin(vec4(n,n+1.,n+57.,n+58.))*43758.5),\n         j=fract(sin(vec4(n+113.,n+114.,n+170.,n+171.))*43758.5);\n    return mix(mix(mix(h.x,h.y,f.x),mix(h.z,h.w,f.x),f.y),\n               mix(mix(j.x,j.y,f.x),mix(j.z,j.w,f.x),f.y),f.z);\n}\n\nfloat F(vec3 p,float t){\n    float v=0.,a=.5;\n    mat3 m=mat3(0,.8,.6,-.8,.36,-.48,-.6,-.48,.64);\n    for(int i=0;i<5;i++)v+=a*N(p+t),p=m*p*2.02,a*=.5;\n    return v;\n}\n\nvoid mainImage(out vec4 o,vec2 u){\n    vec2 r=iResolution.xy,v=(u+u-r)/r.y;\n    float t=iTime*.4,i=0.,d,e;\n    vec3 c=vec3(0),p,rd=normalize(vec3(v,1));\n    for(;i<1.;i+=.02){\n        d=i*6.;\n        p=rd*d;\n        p.z+=t;\n        e=smoothstep(.4,.6,F(p,t));\n        c+=e*(.5+.5*cos(t+d+vec3(0,2,4)))*exp(-d*.5)*.15;\n    }\n    o=vec4(tanh(c+c),1);\n}"
+  }
+ ]
+}

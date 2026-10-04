@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "water-360",
+  "name": "Water 360",
+  "description": "",
+  "username": "",
+  "tags": [
+   "water"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "void mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n\n    vec2 uv = (fragCoord * 2.0 - iResolution.xy) / iResolution.y;\n\n    float t = iTime * 0.5;\n    float dist = length(uv);\n    float angle = atan(uv.y, uv.x);\n\n    float pattern = sin(10.0 * dist - t) * 0.5 + 0.5;\n    pattern += sin(8.0 * angle + t) * 0.3;\n\n    vec3 color1 = vec3(0.1, 0.3, 0.4);\n    vec3 color2 = vec3(0.8, 0.6, 0.4);\n    vec3 color3 = vec3(0.2, 0.5, 0.3);\n\n    vec3 finalColor = mix(color1, color2, pattern);\n    finalColor = mix(finalColor, color3, sin(dist * 3.0 - t) * 0.5 + 0.5);\n\n    finalColor *= smoothstep(1.5, 0.2, dist);\n\n    fragColor = vec4(finalColor, 1.0);\n}"
+  }
+ ]
+}

@@ -1,0 +1,32 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "7XcGW8",
+  "date": "1789050992",
+  "viewed": 210,
+  "name": "Filament",
+  "description": "x",
+  "likes": 9,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal",
+   "parallax"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "// Golfing by FabriceNeyret2, 2026-09-13 -> 343 Chars\n#define v normalize(vec3(\nvoid mainImage(out vec4 o,vec2 u) {\n    float T = iTime, t, e=1. ,i;\n    vec3 R = iResolution,\n         W = v sin(T*.2), cos(T*.15), 2)),\n         U = v -W.z, 0, W)), q;\n        \n    for(\n        o*=i;\n        i++ < 64. && e > .001; \n        t -= e = length(sin(q) + cos(q.zxy)) - .5\n       )\n        q = vec3(2.*sin(T*.5), cos(T*.3), T)\n            - vec3((u+u-R.xy)/R.y, 3) * mat3(U, cross(U, W), W) * t/4.,\n        q.xy *= mat2(cos(q.z*.1 + vec4(0, 33, 11, 0)));\n           \n    o += exp(t/20.);\n}\n\n/* Original\nvoid mainImage(out vec4 couleurSortie, vec2 coordonneesPixel) {\n    vec2 resolutionY = iResolution.xy;\n    vec2 coordonneesNormalisees = (coordonneesPixel * 2.0 - resolutionY) / resolutionY.y;\n\n    float temps = iTime;\n\n    vec3 directionVue = normalize(vec3(sin(temps * 0.2), cos(temps * 0.15), 2.0));\n    vec3 vecteurOrthogonal = normalize(vec3(-directionVue.z, 0.0, directionVue.x));\n    vec3 vecteurLateral = cross(vecteurOrthogonal, directionVue);\n\n    mat3 matriceOrientation = mat3(vecteurOrthogonal, vecteurLateral, directionVue);\n\n    vec3 origineRayon = vec3(2.0 * sin(temps * 0.5), cos(temps * 0.3), temps);\n    vec3 directionRayon = vec3(coordonneesNormalisees, 3.0) * matriceOrientation;\n\n    float distanceParcourue = 0.0;\n    float distanceSurface = 1.0;\n    float nombreIterations = 0.0;\n\n    couleurSortie = vec4(0.0);\n\n    for (int i = 0; i < 64; i++) {\n        if (distanceSurface <= 0.001) {\n            break;\n        }\n\n        vec3 positionCourante = origineRayon - directionRayon * (distanceParcourue / 4.0);\n\n        float angleRotation = positionCourante.z * 0.1;\n        mat2 matriceRotation = mat2(\n            cos(angleRotation),\n            cos(angleRotation + 33.0),\n            cos(angleRotation + 11.0),\n            cos(angleRotation)\n        );\n        positionCourante.xy *= matriceRotation;\n\n        distanceSurface = length(sin(positionCourante) + cos(positionCourante.zxy)) - 0.5;\n        distanceParcourue -= distanceSurface;\n        nombreIterations += 1.0;\n    }\n\n    couleurSortie += exp(distanceParcourue / 20.0);\n}*/",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

@@ -71,7 +71,18 @@ test('analyserShader : champs optionnels absents, titre de repli', () => {
   assert.equal(r.erreur, null);
   assert.equal(r.titre, 'mon-shader');
   assert.equal(r.auteur, null);
+  assert.equal(r.date, null);
   assert.equal(r.avertissements.length, 1);
+});
+
+test('analyserShader : date lue depuis info.date (chaîne, comme l\'API Shadertoy)', () => {
+  const r = analyserShader(shaderSimple('T', { date: '1788449477' }), 0, 'f.json');
+  assert.equal(r.date, 1788449477);
+});
+
+test('analyserShader : date non numérique ignorée', () => {
+  const r = analyserShader(shaderSimple('T', { date: 'hier' }), 0, 'f.json');
+  assert.equal(r.date, null);
 });
 
 test('analyserShader : le type de canal peut être donné par « type » ou « ctype »', () => {

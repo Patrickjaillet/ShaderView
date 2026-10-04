@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "s3KGRR",
+  "date": "1789930221",
+  "viewed": 70,
+  "name": "Tunnel Sombre",
+  "description": "x",
+  "likes": 7,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage( out vec4 fragColor, in vec2 fragCoord )\n{\n    vec2 resolution = iResolution.xy;\n    vec2 coordonneesFragment = fragCoord;\n    float temps = iTime;\n\n    float distanceParcourue = 0.0;\n    float echelleAccumulee = 0.0;\n    float distanceMinimaleOrbite = 0.0;\n    float facteurEchelle = 0.0;\n    float distanceSurface = 0.0;\n    float lumiereAccumulee = 0.0;\n\n    vec3 directionRegard = normalize(vec3(0.18 * cos(temps * 0.6), -0.08 * sin(temps * 0.4), 1.0));\n    vec3 vecteurDroit = vec3(-directionRegard.z, 0.0, directionRegard.x);\n    vec3 directionRayon = mat3(vecteurDroit, cross(vecteurDroit, directionRegard), directionRegard) * normalize(vec3((coordonneesFragment - resolution * 0.5) / resolution.y, 1.0));\n    vec3 positionCourante;\n\n    vec2 coordonneesPerturbees, coordonneesRepetees;\n\n    for (int indexEtape = 0; indexEtape < 110; indexEtape++) {\n        positionCourante = vec3(1.2 * sin(temps * 0.6), 0.8 * cos(temps * 0.4), 4.0 * temps) + directionRayon * distanceParcourue;\n        coordonneesPerturbees = positionCourante.xy - vec2(1.2 * sin(positionCourante.z * 0.15), 0.8 * cos(positionCourante.z * 0.1));\n        coordonneesRepetees = mod(coordonneesPerturbees + 2.0, 4.0) - 2.0;\n        \n        echelleAccumulee = 1.0;\n        distanceMinimaleOrbite = 9.0;\n        \n        for (int indexFractal = 0; indexFractal < 4; indexFractal++) {\n            coordonneesRepetees = clamp(coordonneesRepetees, -1.0, 1.0) * 2.0 - coordonneesRepetees;\n            coordonneesRepetees *= facteurEchelle = max(1.25 / max(dot(coordonneesRepetees, coordonneesRepetees), 0.08), 0.55);\n            echelleAccumulee *= facteurEchelle;\n            distanceMinimaleOrbite = min(distanceMinimaleOrbite, length(coordonneesRepetees));\n        }\n        \n        distanceSurface = abs(max((abs(coordonneesRepetees.x) - 0.15) / echelleAccumulee, 1.4 - length(coordonneesPerturbees)));\n        lumiereAccumulee += 0.002 / (0.05 + 15.0 * distanceSurface) + 0.0006 / (0.02 + 1.5 * distanceMinimaleOrbite);\n        distanceParcourue += max(distanceSurface * 0.35, 0.004);\n    }\n\n    fragColor = vec4(pow(lumiereAccumulee, 1.4));\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "sX33Rj",
+  "date": "1789633218",
+  "viewed": 40,
+  "name": "Wave Box",
+  "description": "Wave Box",
+  "likes": 4,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "box"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 O, vec2 U) {\n    vec2 p = vec2(U.x, iResolution.y - U.y) / iResolution.xy * 500.;\n    \n    vec2 center = vec2(250.);\n    vec2 dir = p - center;\n    float r = length(dir);\n    float a = atan(dir.y, dir.x);\n    a += log(r + 1.0) * 0.25;\n    p = center + r * vec2(cos(a), sin(a));\n\n    float f = iTime * 60., m = mod(f, 50.), I = floor((p.x + m) / 50.), h = 0., dist;\n    int di, dj, k;\n    vec3 L = normalize(vec3(.5, .8, -.6)), ro, rd, hp, q, e = vec3(.1, 0, 0), norm, col = vec3(0);\n    \n    for (di = -1; di <= 1; di++) {\n        float x = (I + float(di)) * 50. - m;\n        float rVal = f * 31. / 30. + x;\n        float sz = abs(15. * sin(rVal)) + 2.;\n        float sX = sin(rVal * .5), cX = cos(rVal * .5);\n        float sY = sin(rVal * .7), cY = cos(rVal * .7);\n        float sZ = sin(rVal),      cZ = cos(rVal);\n        mat3 M = mat3(cZ, -sZ, 0, sZ, cZ, 0, 0, 0, 1) *\n                 mat3(cY, 0, sY, 0, 1, 0, -sY, 0, cY) *\n                 mat3(1, 0, 0, 0, cX, -sX, 0, sX, cX);\n        float nx = x + f, ni = floor(nx), nf = fract(nx);\n        float h0 = fract(sin(ni) * 43758.55);\n        float h1 = fract(sin(ni + 1.) * 43758.55);\n        float nVal = mix(h0, h1, nf * nf * (3. - 2. * nf));\n        float yM = mod(-f * (nVal - .5) * 6., 99.);\n        float J = floor((p.y - yM) / 99.);\n        \n        for (dj = -1; dj <= 1; dj++) {\n            float y = (J + float(dj)) * 99. + yM;\n            h = 0.;\n            ro = M * vec3(p - vec2(x, y), -100);\n            rd = M * vec3(0, 0, 1);\n            \n            for (k = 0; k++ < 12 && h <= 200.; ) {\n                hp = ro + rd * h;\n                q = abs(hp) - vec3(sz);\n                dist = length(max(q, 0.)) + min(max(q.x, max(q.y, q.z)), 0.);\n                if (dist < .1) {\n                    vec3 qX1 = abs(hp + e.xyy) - vec3(sz), qX2 = abs(hp - e.xyy) - vec3(sz);\n                    vec3 qY1 = abs(hp + e.yxy) - vec3(sz), qY2 = abs(hp - e.yxy) - vec3(sz);\n                    vec3 qZ1 = abs(hp + e.yyx) - vec3(sz), qZ2 = abs(hp - e.yyx) - vec3(sz);\n                    \n                    float dX1 = length(max(qX1, 0.)) + min(max(qX1.x, max(qX1.y, qX1.z)), 0.);\n                    float dX2 = length(max(qX2, 0.)) + min(max(qX2.x, max(qX2.y, qX2.z)), 0.);\n                    float dY1 = length(max(qY1, 0.)) + min(max(qY1.x, max(qY1.y, qY1.z)), 0.);\n                    float dY2 = length(max(qY2, 0.)) + min(max(qY2.x, max(qY2.y, qY2.z)), 0.);\n                    float dZ1 = length(max(qZ1, 0.)) + min(max(qZ1.x, max(qZ1.y, qZ1.z)), 0.);\n                    float dZ2 = length(max(qZ2, 0.)) + min(max(qZ2.x, max(qZ2.y, qZ2.z)), 0.);\n\n                    norm = normalize(vec3(dX1 - dX2, dY1 - dY2, dZ1 - dZ2));\n                    float diff = max(dot(norm, L), .15);\n                    \n                    vec3 baseCol = .5 + .5 * cos(vec3(I + float(di), J + float(dj), 2.) + vec3(0, 2, 4));\n                    col = baseCol * diff;\n                    k = 12;\n                } else h += dist;\n            }\n        }\n    }\n\n    O = vec4(col, 1.0);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

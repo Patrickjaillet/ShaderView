@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "raymarching-090",
+  "name": "Raymarching 090",
+  "description": "",
+  "username": "",
+  "tags": [
+   "raymarching"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "void mainImage(out vec4 n,in vec2 o){\n    vec2 g=iResolution.xy,p=o;\n    float d=iTime,q=1.+sin(d*.35)*.8;\n    vec3 r=vec3(.25*sin(d*.4),q,-3.2);\n    vec2 s=(.5*g-p.xy)/g.y;\n    float h=0.;\n    vec3 i=vec3(0.);\n    for(float j=0.;j<82.;++j){\n        vec3 a=vec3(s*1.6,h-.9)+r;\n        float k=d*.22,l=sin(k),m=cos(k);\n        mat2 t=mat2(m,-l,l,m);\n        a.xz*=t;\n        float b=3.5,e=b,c;\n        for(int f=0;f<12;f++){\n            if(f>3){\n                float u=length(a)/c*.6;\n                b=min(b,length(a.xz+u)/e-.0065);\n                a.xz=abs(a.xz)-.68;\n            }\n            else a=abs(a)-.9;\n            c=dot(a,a);\n            e/=c;\n            a/=c;\n            a.y=1.75-a.y;\n        }\n        h+=b;\n        vec3 v=vec3(4.,2.5,1.5);\n        i+=v*.008/exp(a.y/e+b*60.);\n    }\n    n=vec4(i,1.);\n}"
+  }
+ ]
+}

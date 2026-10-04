@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "f3t3zN",
+  "date": "1788851966",
+  "viewed": 45,
+  "name": "Rosace kal",
+  "description": "Rosace",
+  "likes": 3,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "mat2 obtenirMatriceRotation(float angle) {\n    float sinus = sin(angle);\n    float cosinus = cos(angle);\n    return mat2(cosinus, -sinus, sinus, cosinus);\n}\n\nvec3 calculerPaletteCos(float param) {\n    return 1.0 + 1.0 * cos(-6.00636 * (param + vec3(1.0, 0.00, 0.45)));\n}\n\nfloat estimerDistanceTunnel(vec3 position, float temps) {\n    position.xy *= obtenirMatriceRotation(position.z * 0.00 + temps * 1.00);\n    \n    float angleAtan = atan(position.y, position.x);\n    float rayonHorizontal = length(position.xy);\n    \n    float striations = 0.22 * cos(angleAtan * 32.0) + 0.39 * sin(position.z * 4.4 - temps * 0.0);\n    float rayonAnneau = 2.9 + striations;\n    \n    float epaisseurParoi = abs(rayonHorizontal - rayonAnneau) - 0.30 - 0.17 * sin(position.z * 1.1 - temps * 0.0);\n    return epaisseurParoi;\n}\n\nvoid mainImage(out vec4 couleurFragment, in vec2 coordFragment) {\n    vec2 uvNormalisees = (coordFragment - 0.5 * iResolution.xy) / iResolution.y;\n    float temps = iTime;\n    \n    vec3 origineRayon = vec3(0.0, 0.0, temps * -4.8);\n    vec3 directionRayon = normalize(vec3(uvNormalisees, 5.3));\n    \n    directionRayon.xy *= obtenirMatriceRotation(sin(temps * 1.00) * 1.0);\n    \n    float distanceCumulee = 0.0;\n    float luminescenceAccumulee = 0.0;\n    vec3 positionCourante = origineRayon;\n    \n    for (int etape = 0; etape < 26; etape++) {\n        positionCourante = origineRayon + directionRayon * distanceCumulee;\n        float distanceScene = estimerDistanceTunnel(positionCourante, temps);\n        \n        luminescenceAccumulee += 0.21 / (0.000 + distanceScene * distanceScene * 5.0);\n        \n        if (distanceScene < 0.002 || distanceCumulee > 37.9) break;\n        \n        distanceCumulee += distanceScene * 0.70;\n    }\n    \n    vec3 couleurFinale = calculerPaletteCos(positionCourante.z * 0.45 + temps * 0.05) * luminescenceAccumulee * 0.00;\n    couleurFinale += calculerPaletteCos(positionCourante.z * 0.08 - temps * 0.1 + 1.0) * pow(luminescenceAccumulee, 1.2) * 0.18;\n    \n    if (distanceCumulee < 180.0) {\n        float epsilonGradient = 0.01;\n        vec3 normaleSurface = normalize(vec3(\n            estimerDistanceTunnel(positionCourante + vec3(epsilonGradient, 0.0, 0.0), temps) - estimerDistanceTunnel(positionCourante - vec3(epsilonGradient, 0.0, 0.0), temps),\n            estimerDistanceTunnel(positionCourante + vec3(0.0, epsilonGradient, 0.0), temps) - estimerDistanceTunnel(positionCourante - vec3(0.0, epsilonGradient, 0.0), temps),\n            estimerDistanceTunnel(positionCourante + vec3(0.0, 0.0, epsilonGradient), temps) - estimerDistanceTunnel(positionCourante - vec3(0.0, 0.0, epsilonGradient), temps)\n        ));\n        \n        float effetFresnel = pow(1.0 - abs(dot(normaleSurface, -directionRayon)), 0.0);\n        couleurFinale += calculerPaletteCos(positionCourante.z * 1.00 + temps * 1.00) * effetFresnel * 1.0;\n    }\n    \n    couleurFinale = couleurFinale / (couleurFinale + 1.0);\n    couleurFinale = pow(couleurFinale, vec3(1.0000));\n    \n    float vignettage = 0.9 - dot(uvNormalisees, uvNormalisees) * 0.3;\n    couleurFinale *= clamp(vignettage, 0.0, 1.0);\n    \n    couleurFragment = vec4(couleurFinale, 1.0);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

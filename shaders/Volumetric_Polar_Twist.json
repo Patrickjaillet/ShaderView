@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "7X33R2",
+  "date": "1789515457",
+  "viewed": 47,
+  "name": "Volumetric Polar Twist",
+  "description": "f",
+  "likes": 5,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fd"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "// 677 CARACTERES\nvoid mainImage(out vec4 O,vec2 U){\n    vec2 R=iResolution.xy;\n    vec3 p,q,C=vec3(0),d=normalize(vec3((U+U-R)/R.y,2));\n    float T=6.2831853,A=mod(iTime,T),s1=sin(A),c1=cos(A),s2=sin(A*.5),c2=cos(A*.5),E=15.+10.*s1,t=0.,S,V,r,a,F,i=0.;\n    mat2 M1=mat2(c1,-s1,s1,c1),M2=mat2(c2,-s2,s2,c2);\n    for(;i++<64.;t+=max(S*.4,.02)){\n        p=vec3(0,0,-4.5)+d*t;q=p;\n        q.xy/=dot(q.xy,q.xy)+.35;\n        r=length(q.xy);\n        a=atan(q.y,q.x)+log(max(r,.001))*.8+A;\n        q.xy=vec2(cos(a),sin(a))*r;\n        for(int k=0;k<5;k++)\n            q=abs(q)-vec3(.6,.8,.6),\n            q.xy*=M1,\n            q.xz*=M2,\n            q*=1.35;\n        S=abs(length(q)-sqrt(max(length(q.xy),.001)))/4.484033;\n        V=max(0.,1.-S/.03);\n        F=fract(length(p)*20./E)+A/T+length(p.xy)*.3;\n        C+=(.06+.02*cos(T*(F+vec3(0,.333,.666))))*V;\n    }\n    O=vec4(C,1);\n}\n/* ORIGINAL 2506 CARACTERES\nmat2 calculerRotation(float angle) {\n    float cosinus = cos(angle);\n    float sinus = sin(angle);\n    return mat2(cosinus, -sinus, sinus, cosinus);\n}\n\nvec3 genererCouleurPastel(float indice) {\n    vec3 base = vec3(0.75, 0.75, 0.75);\n    vec3 amplitude = vec3(0.25, 0.25, 0.25);\n    vec3 frequence = vec3(1.0, 1.0, 1.0);\n    vec3 phase = vec3(0.0, 0.333, 0.666);\n    return base + amplitude * cos(6.2831853 * (frequence * indice + phase));\n}\n\nvec3 appliquerInversionPolaire(vec3 position, float angleBoucle) {\n    vec3 positionResultat = position;\n    \n    float rayonCarre = dot(positionResultat.xy, positionResultat.xy);\n    positionResultat.xy = positionResultat.xy / (rayonCarre + 0.35);\n    \n    float angle2D = atan(positionResultat.y, positionResultat.x);\n    float rayon2D = length(positionResultat.xy);\n    float rayonLogarithmique = log(max(rayon2D, 0.001));\n    \n    float angleTordu = angle2D + rayonLogarithmique * 0.8 + angleBoucle;\n    positionResultat.xy = vec2(cos(angleTordu), sin(angleTordu)) * rayon2D;\n    \n    return positionResultat;\n}\n\nfloat estimerDistanceKifs(vec3 position, float angleBoucle) {\n    vec3 positionPliable = appliquerInversionPolaire(position, angleBoucle);\n    float echelle = 1.0;\n    \n    for(int i = 0; i < 5; i++) {\n        positionPliable = abs(positionPliable) - vec3(0.6, 0.8, 0.6);\n        positionPliable.xy *= calculerRotation(angleBoucle);\n        positionPliable.xz *= calculerRotation(angleBoucle * 0.5);\n        positionPliable *= 1.35;\n        echelle *= 1.35;\n    }\n    \n    float rayonSpirale = length(positionPliable.xy);\n    float rayonSphere = sqrt(max(rayonSpirale, 0.001));\n    float distanceForme = length(positionPliable) - rayonSphere;\n    \n    return abs(distanceForme) / echelle;\n}\n\nvoid mainImage(out vec4 couleurFragment, in vec2 coordFragment) {\n    vec2 resolution = iResolution.xy;\n    vec2 uv = (coordFragment - 0.5 * resolution) / resolution.y;\n    \n    float dureePeriode = 6.2831853;\n    float angleBoucle = mod(iTime, dureePeriode);\n    \n    vec3 origineRayon = vec3(0.0, 0.0, -4.5);\n    vec3 directionRayon = normalize(vec3(uv, 1.0));\n    \n    vec3 couleurAccumulee = vec3(0.0);\n    float distanceParcourue = 0.0;\n    \n    float tempsEcoule = 15.0 + 10.0 * sin(angleBoucle);\n    \n    for(int etape = 0; etape < 64; etape++) {\n        vec3 positionCourante = origineRayon + directionRayon * distanceParcourue;\n        \n        float distanceSurface = estimerDistanceKifs(positionCourante, angleBoucle);\n        \n        float densiteVolumetrique = max(0.0, 0.03 - distanceSurface) / 0.03;\n        \n        if(densiteVolumetrique > 0.0) {\n            float rayonCourant = length(positionCourante) * 20.0;\n            float intensiteModulo = mod(rayonCourant, tempsEcoule) / tempsEcoule;\n            \n            float facteurCouleur = intensiteModulo + (angleBoucle / dureePeriode) + length(positionCourante.xy) * 0.3;\n            vec3 teintePastel = genererCouleurPastel(facteurCouleur);\n            \n            couleurAccumulee += teintePastel * densiteVolumetrique * 0.08;\n        }\n        \n        distanceParcourue += max(distanceSurface * 0.4, 0.02);\n    }\n    \n    couleurFragment = vec4(couleurAccumulee, 1.0);\n}*/",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

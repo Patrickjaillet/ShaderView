@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "raymarching-167",
+  "name": "Raymarching 167",
+  "description": "",
+  "username": "",
+  "tags": [
+   "raymarching"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec3 col = vec3(0.1);\n    float g = 0.0;\n    float t = iTime;\n    float stepSize = 1.0 / 30000.0;\n\n    for (int i = 1; i <= 87; i++) {\n        vec2 uv = (fragCoord - 0.6 * iResolution.xy) / iResolution.y;\n        vec3 p = vec3(uv * g, 1.1 * g) - float(i) * stepSize;\n\n        float c1 = cos(t / 1.5);\n        float s1 = sin(t / 2.2);\n        p.yz = mat2(c1, -s1, s1, c1) * p.yz;\n\n        p.x += t / (0.6 * 3.14159265);\n        p = mod(p, 2.0) - 1.0;\n        vec3 z = p;\n\n        float power = 32.0;\n        float bailout = 2.6;\n        int maxIter = 3;\n        float dr = 1.0;\n\n        for (int j = 0; j < maxIter; j++) {\n            float r = length(z);\n            if (r > bailout) break;\n\n            dr = power * pow(r, power - 1.0) * dr + 1.0;\n\n            float theta = acos(z.z / r);\n            float phi = atan(z.y, z.x);\n            float rp = pow(r, power);\n            float thetap = theta * power;\n            float phip = phi * power;\n            vec3 zp = rp * vec3(\n                sin(thetap) * cos(phip),\n                sin(thetap) * sin(phip),\n                cos(thetap)\n            );\n            z = zp + p;\n        }\n\n        float R = length(z);\n        float e = 0.3 * log(R) * R / dr;\n        g += e;\n        col += 0.005 / exp(e * e * 2e7 - sin(R / vec3(3.0, 6.1, 5.0)));\n    }\n\n    fragColor = vec4(col, 0.0);\n}"
+  }
+ ]
+}

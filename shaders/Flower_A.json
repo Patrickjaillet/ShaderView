@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "NfGSDV",
+  "date": "1788430865",
+  "viewed": 58,
+  "name": "Flower A",
+  "description": "Flower A",
+  "likes": 5,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "raymarching"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "void mainImage(out vec4 couleurFragment, vec2 coordFragment) {\n    vec2 resolutionEcran = iResolution.xy;\n    vec3 positionRayon = vec3(0.0);\n    float distanceParcourueTotal = 0.0;\n    float distanceEstimationSurface = 0.0;\n    float rayonLogPolar = 0.0;\n    float angleRotationCamera = iTime * 0.5;\n    \n    mat2 matriceRotationXZ = mat2(\n        cos(angleRotationCamera), sin(angleRotationCamera),\n        -sin(angleRotationCamera), cos(angleRotationCamera)\n    );\n\n    for (int etapeMarchage = 0; etapeMarchage < 64; etapeMarchage++) {\n        positionRayon = vec3((coordFragment + coordFragment - resolutionEcran) / resolutionEcran.y, 1.0) * distanceParcourueTotal;\n        positionRayon.z -= 3.0;\n        positionRayon.xy *= matriceRotationXZ;\n        \n        rayonLogPolar = length(positionRayon.xy);\n        \n        float anglePolaire = atan(positionRayon.y, positionRayon.x);\n        float coordonneeLogarithmique = log(rayonLogPolar) - iTime;\n        vec2 grilleLogPolaire = fract(vec2(anglePolaire, coordonneeLogarithmique) / 0.8) - 0.5;\n        \n        distanceEstimationSurface = length(grilleLogPolaire) * rayonLogPolar - 0.05;\n        \n        float delimitationSphereEnglobante = length(positionRayon) - 2.0;\n        distanceParcourueTotal += max(distanceEstimationSurface, delimitationSphereEnglobante) * 0.5;\n    }\n\n    uvec2 coordonneePixelEntiere = uvec2(coordFragment);\n    uint graineAleatoire = coordonneePixelEntiere.x + coordonneePixelEntiere.y * uint(resolutionEcran.x) + uint(iFrame) * uint(resolutionEcran.x * resolutionEcran.y);\n    graineAleatoire *= 916533289u;\n    \n    float bruitDither = float(graineAleatoire) / 4294967295.0 * 0.1;\n\n    vec4 couleurTeinte = (cos(iTime + positionRayon.z + vec4(0.0, 2.0, 4.0, 0.0)) + 1.0);\n    float attenuationDistance = 1.0 / (1.0 + distanceParcourueTotal * distanceParcourueTotal * 0.1);\n\n    couleurFragment = couleurTeinte * attenuationDistance + bruitDither;\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

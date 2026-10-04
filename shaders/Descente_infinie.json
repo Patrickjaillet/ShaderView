@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "NXtGWs",
+  "date": "1790245923",
+  "viewed": 148,
+  "name": "Descente infinie ",
+  "description": "x",
+  "likes": 12,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "// Toutes les informations pour modifier\n// les valeurs du shader sont ci-dessous.\nvoid mainImage(out vec4 couleurSortie, vec2 coordonneesPixel) {\n    vec3 resolution = iResolution;\n    \n    // Matrice d'orientation de la caméra : modifier les valeurs pour incliner ou pivoter la vue\n    mat3 matriceOrientation = mat3(\n        3.0,  1.0,  0.7,\n        1.0, -3.0,  6.0,\n       -0.88, 2.0,  4.0\n    ) * 0.1;\n\n    // Calcul des coordonnées UV et champ de vision (FOV) :\n    // - Ajuster 3.0 pour modifier le zoom global\n    // - Ajuster 2.0 (valeur Z de directionRayon) pour élargir/réduire le FOV\n    vec2 uv = (coordonneesPixel * 3.0 - resolution.xy) / resolution.y;\n    vec3 directionRayon = vec3(uv, 2.0) * matriceOrientation;\n\n    couleurSortie = vec4(0.0);\n    \n    // Origine du rayon : modifier -6.0 pour avancer/reculer la caméra sur l'axe Y\n    vec3 positionRayon;\n    positionRayon.y = -6.0;\n\n    // Nombre d'étapes de raymarching : augmenter 80 pour plus de précision volumétrique\n    for (int etape = 0; etape < 80; etape++) {\n        // Seuil de saturation alpha pour stopper la boucle plus tôt\n        if (couleurSortie.a >= 8.0) {\n            break;\n        }\n\n        vec3 positionCourante = positionRayon;\n        float distanceOrigine = length(positionCourante);\n\n        // Facteurs de torsion log-polaire :\n        // - Ajuster 0.45 pour modifier l'intensité de la spirale\n        // - Ajuster les décalages vec4(0.0, 11.0, 33.0, 0.0) pour changer l'orientation des bras\n        vec4 anglesRotation = log(distanceOrigine) * 0.45 - vec4(0.0, 11.0, 33.0, 0.0);\n        mat2 matriceRotation = mat2(\n            cos(anglesRotation.x), cos(anglesRotation.y),\n            cos(anglesRotation.z), cos(anglesRotation.w)\n        );\n        positionCourante.xz *= matriceRotation;\n\n        // Coordonnées de bruit log-polaire :\n        // - Ajuster 0.1 et -0.02 pour modifier la vitesse et le sens d'écoulement\n        // - Ajuster 8.0 pour changer le nombre de répétitions du motif\n        vec3 coordonneesBruit = vec3(\n            fract(log(distanceOrigine) * 0.1 - iTime * 0.02) * 8.0,\n            exp(-positionCourante.y / distanceOrigine),\n            atan(positionCourante.x, positionCourante.z)\n        );\n\n        // Seuil de densité de base : ajuster 0.3 pour rendre la nébuleuse plus fine ou plus dense\n        float densiteEspace = coordonneesBruit.y - 0.3;\n\n        // Boucle d'octaves FBM (bruit procédural) :\n        // - Ajuster 4.0 (début) et 500.0 (fin) pour la plage de fréquences des détails\n        // - Ajuster 0.8 pour l'amplitude des turbulences (lisse vs rugueux)\n        for (float echelle = 4.0; echelle < 500.0; echelle += echelle) {\n            vec3 ondeSinus = sin(coordonneesBruit.yzx * echelle);\n            vec3 ondeCosinus = cos(coordonneesBruit * echelle);\n            densiteEspace -= abs(dot(ondeSinus, ondeCosinus)) * 0.8 / echelle;\n        }\n\n        densiteEspace = max(densiteEspace, 0.0);\n\n        // Palette de couleurs et vitesse de défilement :\n        // - Ajuster 0.02 et 0.003 pour l'intensité lumineuse globale\n        // - Ajuster vec4(6.0, 1.0, 2.0, 0.0) pour décaler les teintes (RGB)\n        vec4 couleurTeinte = 0.02 + 0.003 * cos(distanceOrigine - iTime + vec4(6.0, 1.0, 2.0, 0.0));\n        \n        // Gain d'accumulation lumineuse volumétrique : ajuster 1024.0 et 0.4 pour le contraste\n        couleurSortie += min(densiteEspace * 1024.0, 0.4 - densiteEspace) * couleurTeinte;\n\n        // Pas d'avancement du rayon : ajuster 0.2 pour équilibrer précision visuelle et performances\n        positionRayon += directionRayon * max(densiteEspace, 0.001) * distanceOrigine * 0.2;\n    }\n\n    // Post-traitement (tonemapping, compression de la courbe de couleur et niveau de noir)\n    couleurSortie -= 0.5;\n    couleurSortie /= couleurSortie + 0.2 + 0.15 / couleurSortie;\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

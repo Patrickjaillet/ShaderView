@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "divers-012",
+  "name": "Divers 012",
+  "description": "",
+  "username": "",
+  "tags": [
+   "divers"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "#define RED vec3(1.0, 0.1, 0.05)\n#define ORANGE vec3(1.0, 0.4, 0.1)\n#define GOLD vec3(1.0, 0.8, 0.2)\n#define BLACK vec3(0.01, 0.0, 0.0)\n#define THICKNESS 0.004\n#define GLOW 0.012\n\nmat2 rot(float a) {\n    float s = sin(a), c = cos(a);\n    return mat2(c, -s, s, c);\n}\n\nfloat sdSegment(vec2 p, vec2 a, vec2 b) {\n    vec2 pa = p - a, ba = b - a;\n    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);\n    return length(pa - ba * h);\n}\n\nfloat hash(vec2 p) {\n    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);\n}\n\nfloat noise(vec2 p) {\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    f = f * f * (3.0 - 2.0 * f);\n    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),\n               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);\n}\n\nfloat fbm(vec2 p) {\n    float v = 0.0;\n    float a = 0.5;\n    for (int i = 0; i < 8; i++) {\n        v += a * noise(p);\n        p = p * 2.2 + vec2(10.0);\n        a *= 0.5;\n    }\n    return v;\n}\n\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n\n    float time = iTime * 1.2;\n    float cycle = mod(time, 24.0);\n\n    vec2 camUV = uv;\n    float angleCam = iTime * 0.2;\n    if(cycle > 12.0) camUV *= rot(sin(time * 0.5) * 0.2);\n\n    float impact = pow(abs(cos(time * 0.4)), 20.0);\n    vec2 distortion = vec2(fbm(camUV * 2.5 + time * 0.8));\n    camUV += (distortion - 0.5) * 0.04 * (1.0 + impact * 2.0);\n\n    vec2 fireUV = camUV * 0.7;\n    fireUV.y -= time * 0.6;\n    float f1 = fbm(fireUV + time * 0.2);\n    float f2 = fbm(fireUV * 1.5 - time * 0.4);\n    float fireShape = smoothstep(0.2, 0.9, f1 * f2 + 0.25 - length(camUV) * 0.5);\n\n    vec3 col = mix(BLACK, RED, fireShape);\n    col = mix(col, ORANGE, smoothstep(0.4, 0.7, fireShape));\n    col = mix(col, GOLD, smoothstep(0.7, 1.0, fireShape));\n\n    float rotY = time * 0.9;\n    float cosY = cos(rotY);\n    float r = 0.45;\n    vec2 p[5];\n    for(int i = 0; i < 5; i++) {\n        float a = (1.5 * 3.14159) + float(i) * 2.0 * 3.14159 / 5.0;\n        vec2 base = vec2(cos(a), sin(a)) * r;\n        p[i] = vec2(base.x * cosY, base.y);\n    }\n\n    float d = 1e10;\n    d = min(d, sdSegment(camUV, p[0], p[2]));\n    d = min(d, sdSegment(camUV, p[2], p[4]));\n    d = min(d, sdSegment(camUV, p[4], p[1]));\n    d = min(d, sdSegment(camUV, p[1], p[3]));\n    d = min(d, sdSegment(camUV, p[3], p[0]));\n\n    float ringDist = length(vec2(camUV.x / (abs(cosY) + 0.01), camUV.y));\n    float rings = min(abs(ringDist - 0.48), abs(ringDist - 0.52));\n    d = min(d, rings);\n\n    float pulse = 1.0 + 0.3 * sin(time * 5.0);\n    float d_glow = (GLOW * pulse + impact * 0.15) / max(d, 0.001);\n\n    vec3 logoCol = mix(RED, GOLD, impact);\n    col += logoCol * d_glow * 0.6;\n    col += logoCol * smoothstep(THICKNESS * (1.0 + impact * 5.0), 0.0, d);\n\n    vec2 partUV = camUV * 2.0;\n    partUV.y -= time * 1.5;\n    float particles = pow(fbm(partUV * 3.0), 12.0) * 50.0;\n    particles *= smoothstep(0.2, -0.6, camUV.y);\n    col += mix(RED, GOLD, noise(partUV)) * particles * (1.0 + impact * 10.0);\n\n    col = mix(col, vec3(length(col)), -0.2); \n    col *= smoothstep(1.2, 0.4, length(uv)); \n\n    float chromatic = 0.005 + impact * 0.03;\n    vec3 final;\n    final.r = col.r;\n    final.g = mix(col.g, fireShape, 0.1); \n    final.b = col.b; \n\n    if(impact > 0.8) {\n        float flash = sin(time * 50.0) * 0.5 + 0.5;\n        col += flash * impact * 0.2;\n    }\n\n    fragColor = vec4(pow(col, vec3(0.85)), 1.0);\n}"
+  }
+ ]
+}

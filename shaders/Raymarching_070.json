@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "raymarching-070",
+  "name": "Raymarching 070",
+  "description": "",
+  "username": "",
+  "tags": [
+   "raymarching"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "void mainImage(out vec4 fragColor, in vec2 fragCoord)\n{\n    vec2 r = iResolution.xy;\n    vec2 FC = fragCoord;\n    float t = iTime;\n\n    float sT = sin(t);\n    float cT = cos(t);\n    mat2 rotTime = mat2(cT, -sT, sT, cT);      \n\n    float sS = sin(24.8);\n    float cS = cos(24.8);\n    mat2 rotStep = mat2(cS, -sS, sS, cS);\n\n    vec3 q = vec3(0.0, 0.45, -3.0);\n    vec3 o = vec3(0.0);\n\n    float e = 0.0;\n    float v;\n    float u;\n\n    for (float i = 0.0; i < 100.0; i += 1.0)\n    {\n        vec3 p = q += vec3((FC.xy - 0.5 * r) / r.y, 1.6) * e;\n\n        p.xz *= rotTime;\n\n        e = 9.7;\n        v = 2.6;\n\n        float radius = 29.6;\n\n        for (int j = 0; j < 9; j++)\n        {\n            p.xz *= rotStep;\n            p.xz = abs(p.xz) - 0.5;\n\n            u = dot(p, p);\n            v /= u;\n            p /= (u + 0.07);\n            p.y = 1.71 - p.y;\n\n            radius = min(radius, length(p.xz));\n            e = min(e, max(length(p.xz) - 0.00 / u, p.y) / v);\n        }\n\n        float stemDist = q.y;\n        e = min(e, stemDist);\n\n        float stemMask = step(1.0, stemDist);\n        float leafMask = smoothstep(0.43, 0.13, radius) * smoothstep(0.00, 0.31, stemDist) * (1.0 - stemMask);\n\n        vec3 petalColor = vec3(2.8);          \n        vec3 stemColor   = vec3(-0.4);         \n        vec3 leafColor   = vec3(0.0, 0.15, 0.0); \n\n        vec3 mixedColor = mix(petalColor, stemColor, stemMask);\n        mixedColor = mix(mixedColor, leafColor, leafMask);\n\n        o += exp(-p.y / v - 5.5) * mixedColor;\n    }\n\n    fragColor = vec4(o, 1.0);\n}"
+  }
+ ]
+}

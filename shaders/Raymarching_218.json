@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "raymarching-218",
+  "name": "Raymarching 218",
+  "description": "",
+  "username": "",
+  "tags": [
+   "raymarching"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "#define L(a,b) w = b - a, d = min(d, length(p - a - w * clamp(dot(p - a, w) / dot(w, w), 0., 1.)) - .003)\n#define C(q) d = min(d, length(p - q) - .015)\n\nvoid mainImage(out vec4 O, vec2 U) {\n    vec2 R = iResolution.xy,\n         p = (U + U - R) / R.y, w;\n    float d = 1., t = iTime * .6, a;\n\n    for (float i = 0.; i < 6.28; i += .19) {\n        a = t + i;\n        vec2 D = vec2(sin(a), cos(a)),\n             P0 = .425 * D,\n             P1 = .85 * D,\n             P2 = clamp(P1, -.6, .6);\n\n        L(P1, P2);\n        L(P0, P2);\n        C(P0); C(P1); C(P2);\n    }\n\n    O = vec4(smoothstep(2. / R.y, 0., d));\n}"
+  }
+ ]
+}

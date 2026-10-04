@@ -1,0 +1,31 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "73cGRS",
+  "date": "1789332376",
+  "viewed": 43,
+  "name": "Tetramorph",
+  "description": "10101",
+  "likes": 4,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "tetra"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "mat2 obtenirMatriceRotation(float angle) {\n    return mat2(\n        cos(angle), -sin(angle),\n        sin(angle),  cos(angle)\n    );\n}\n\nstruct ResultatDistance {\n    float distance;\n    float idCellule;\n};\n\nResultatDistance carteScene(vec3 positionRayon, vec3 positionBrute, float facteurMorph, float temps) {\n    vec3 positionCourante = positionRayon;\n    float idCourant = 0.0;\n    \n    vec3 axeLePlusProche;\n    float projectionMax;\n    float indexAxe;\n\n    for (int niveau = 0; niveau < 5; niveau++) {\n        projectionMax = -9.0;\n        \n        for (int k = 0; k < 4; k++) {\n            vec3 axeTest = vec3(\n                1 - 2 * (k & 1),\n                1 - 2 * (((k + 1) / 2) % 2),\n                1 - 2 * (k / 2)\n            );\n            \n            float projection = dot(positionCourante, axeTest);\n            if (projection > projectionMax) {\n                projectionMax = projection;\n                axeLePlusProche = axeTest;\n                indexAxe = float(k);\n            }\n        }\n        \n        positionCourante = positionCourante * 2.0 - axeLePlusProche * (1.0 - facteurMorph);\n        idCourant = idCourant * 4.0 + indexAxe;\n    }\n\n    float largeurBoite = 0.05 + 0.02 * sin(temps * 2.0 + idCourant);\n    vec3 decalageBoite = abs(positionCourante) - largeurBoite;\n    \n    float distanceBoite = length(max(decalageBoite, 0.0)) + min(max(decalageBoite.x, max(decalageBoite.y, decalageBoite.z)), 0.0);\n    float distanceSphere = length(positionCourante) - largeurBoite;\n    \n    float distanceFormeMelangee = mix(distanceBoite, distanceSphere, facteurMorph) / 32.0;\n    float distanceSphereEnglobante = length(positionBrute) - 1.0;\n    \n    float distanceFinale = mix(distanceFormeMelangee, distanceSphereEnglobante, facteurMorph * 0.5);\n    \n    return ResultatDistance(distanceFinale, idCourant);\n}\n\nvoid mainImage(out vec4 couleurFragment, vec2 coordFragment) {\n    vec3 resolution = iResolution;\n    float temps = iTime;\n    \n    vec2 uvNormalisees = (coordFragment * 2.0 - resolution.xy) / resolution.y;\n    vec3 directionRayon = normalize(vec3(uvNormalisees, 2.0));\n    \n    float facteurMorph = (1.0 - cos(temps * 0.6)) * 0.415;\n    \n    vec3 origineRayon = vec3(0.0, 0.0, -2.6);\n    float distanceRayon = 0.0;\n    float luminescenceAccumulee = 0.0;\n    float idCelluleTouchee = 0.0;\n    float distanceCourante = 0.0;\n    \n    for (int etape = 0; etape < 96; etape++) {\n        if (distanceRayon >= 8.0) break;\n        \n        vec3 position = origineRayon + directionRayon * distanceRayon;\n        \n        position.xz *= obtenirMatriceRotation(temps * 0.2);\n        position.xy *= obtenirMatriceRotation(temps * 0.12);\n        \n        float angleTorsion = log(length(position.xz) + 1e-5) * facteurMorph * 1.5;\n        position.xz *= obtenirMatriceRotation(angleTorsion);\n        \n        vec3 positionBrute = position;\n        position = mix(position, normalize(position) * 1.2, facteurMorph);\n        \n        ResultatDistance donneesScene = carteScene(position, positionBrute, facteurMorph, temps);\n        distanceCourante = donneesScene.distance;\n        \n        if (distanceCourante < 0.001) {\n            idCelluleTouchee = donneesScene.idCellule;\n            break;\n        }\n        \n        luminescenceAccumulee += 0.0005 / (distanceCourante * distanceCourante + 1e-4);\n        distanceRayon += distanceCourante * 0.5;\n    }\n    \n    vec3 paletteBase = fract(sin(idCelluleTouchee + vec3(0.0, 1.3, 2.7)) * 43758.55);\n    \n    float eclairageDirect = (distanceCourante < 0.001) ? (1.0 - distanceRayon * 0.25) : 0.0;\n    float intensiteFinale = luminescenceAccumulee * 0.08 + eclairageDirect;\n    \n    couleurFragment = vec4(paletteBase * intensiteFinale, 1.0);\n}",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}

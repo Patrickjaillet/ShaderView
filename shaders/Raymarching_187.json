@@ -1,0 +1,22 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "raymarching-187",
+  "name": "Raymarching 187",
+  "description": "",
+  "username": "",
+  "tags": [
+   "raymarching"
+  ],
+  "date": ""
+ },
+ "renderpass": [
+  {
+   "name": "Image",
+   "type": "image",
+   "inputs": [],
+   "outputs": [],
+   "code": "#define R iResolution\n\n#define r(a) mat2(cos(a+vec4(0,11,33,0)))\n\nvoid mainImage(out vec4 O, vec2 I) {\n\n    vec3 r = iResolution, p, g, st,\n         ro = vec3(0, 0, -2.5), \n         rd = normalize(vec3((I - .5 * r.xy) / r.y, 1.2)),\n         ink = vec3(.01, .02, .05);\n\n    float t = sin(iTime * .05) * .3, a = 0., d, n = 0., j, k, m, sd, scl, h, ax;\n\n    ro.xz *= r(t);\n\n    rd.xz *= r(t);\n\n    for (int i = 0; i < 90; i++) {\n\n        p = ro + rd * a;\n\n        vec3 q = p;\n\n        q.z += iTime * .5;\n\n        q = mod(q + 4., 8.) - 4.;\n\n        scl = 1.; d = 1e10;\n\n        for (j = 0.; j < 5.; j++) {\n\n            q = abs(q) - .35;\n\n            ax = iTime * .15 + j * .2;\n\n            q.yz *= r(ax);\n\n            q.xz *= r(iTime * .225);\n\n            h = 1.8 / clamp(dot(q, q), .15, 1.);\n\n            q *= h; \n\n            scl *= h;\n\n            d = min(d, (length(q.xy) - .12 * abs(sin(q.z * 2. + iTime))) / scl);\n        }\n\n        d += sin(p.x * 4. + iTime * .15) * cos(p.y * 4. - iTime * .15) * sin(p.z * 4. + iTime) * .04;\n\n        if (d < .01) { \n\n            n += (.01 - d) * 18.; \n\n            a += .01; \n        }\n\n        else a += max(d * .45, .008);\n\n        if (a > 14. || n > 4.5) break;\n    }\n\n    if (a < 14.) {\n\n        for (int k = 0; k < 3; k++) {\n\n            st = vec3(0); st[k] = .002;\n            float d1, d2;\n\n            for (int m = 0; m < 2; m++) {\n\n                vec3 np = p + (m == 0 ? st : -st), q = np;\n\n                q.z += iTime * .5;\n\n                q = mod(q + 4., 8.) - 4.;\n\n                scl = 1.; sd = 1e10;\n\n                for (j = 0.; j < 5.; j++) {\n                    q = abs(q) - .35;\n                    ax = iTime * .15 + j * .2;\n                    q.yz *= r(ax);\n                    q.xz *= r(iTime * .225);\n                    h = 1.8 / clamp(dot(q, q), .15, 1.);\n                    q *= h; scl *= h;\n                    sd = min(sd, (length(q.xy) - .12 * abs(sin(q.z * 2. + iTime))) / scl);\n                }\n\n                sd += sin(np.x * 4. + iTime * .15) * cos(np.y * 4. - iTime * .15) * sin(np.z * 4. + iTime) * .04;\n\n                if (m == 0) d1 = sd; else d2 = sd;\n            }\n\n            g[k] = d1 - d2;\n        }\n\n        g = normalize(g);\n\n        n += pow(1. - max(dot(-rd, g), 0.), 3.) * 1.275;\n\n        ink += max(dot(g, normalize(vec3(1, 2, -2))), 0.) * vec3(.02, .05, .1);\n    }\n\n    O = vec4(pow(clamp(mix(ink, vec3(.96, .95, .92) - length((I - .5 * r.xy) / r.y) * .22, exp(-n)), 0., 1.), vec3(.95)), 1.);\n}"
+  }
+ ]
+}

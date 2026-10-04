@@ -1,0 +1,32 @@
+{
+ "ver": "0.1",
+ "info": {
+  "id": "73yGzR",
+  "date": "1789900428",
+  "viewed": 50,
+  "name": "Filament Rainbow Ray",
+  "description": "x",
+  "likes": 4,
+  "published": "Public API",
+  "usePreview": 0,
+  "tags": [
+   "fractal",
+   "parallax"
+  ]
+ },
+ "renderpass": [
+  {
+   "inputs": [],
+   "outputs": [
+    {
+     "id": "4dfGRr",
+     "channel": 0
+    }
+   ],
+   "code": "// 398 Chars - Rainbow Raymarched version\n#define N normalize(vec3(\nvoid mainImage(out vec4 o,vec2 u){\n    float T=iTime,t,e,i;\n    vec3 R=iResolution,\n         W=N sin(T*.2),cos(T*.15),2)),\n         U=N -W.z,0,W)),q;\n         \nfor(o*=i;i++<64.&&t<80.;t+=max(e,.04))\n    q=vec3(2.*sin(T*.5),cos(T*.3),T)-vec3((u+u-R.xy)/R.y,3)*mat3(U,cross(U,W),W)*t/8.,\n    q.xy*=mat2(cos(q.z*.1+vec4(0,33,11,0))),\n    o+=(1.+sin(T+T+t*.1+vec4(0,2,4,0)))/exp(max(e=length(sin(q)+cos(q.zxy))-.5,0.)*8.+t*.04)*.04;\n}\n\n/* Original\nvoid mainImage(out vec4 couleurSortie, vec2 coordonneesPixel) {\n    vec2 resolutionY = iResolution.xy;\n    vec2 coordonneesNormalisees = (coordonneesPixel * 2.0 - resolutionY) / resolutionY.y;\n\n    float temps = iTime;\n\n    vec3 directionVue = normalize(vec3(sin(temps * 0.2), cos(temps * 0.15), 2.0));\n    vec3 vecteurOrthogonal = normalize(vec3(-directionVue.z, 0.0, directionVue.x));\n    vec3 vecteurLateral = cross(vecteurOrthogonal, directionVue);\n\n    mat3 matriceOrientation = mat3(vecteurOrthogonal, vecteurLateral, directionVue);\n\n    vec3 origineRayon = vec3(2.0 * sin(temps * 0.5), cos(temps * 0.3), temps);\n    vec3 directionRayon = vec3(coordonneesNormalisees, 3.0) * matriceOrientation;\n\n    float distanceParcourue = 0.0;\n    float distanceSurface = 1.0;\n    float nombreIterations = 0.0;\n\n    couleurSortie = vec4(0.0);\n\n    for (int i = 0; i < 64; i++) {\n        if (distanceSurface <= 0.001) {\n            break;\n        }\n\n        vec3 positionCourante = origineRayon - directionRayon * (distanceParcourue / 4.0);\n\n        float angleRotation = positionCourante.z * 0.1;\n        mat2 matriceRotation = mat2(\n            cos(angleRotation),\n            cos(angleRotation + 33.0),\n            cos(angleRotation + 11.0),\n            cos(angleRotation)\n        );\n        positionCourante.xy *= matriceRotation;\n\n        distanceSurface = length(sin(positionCourante) + cos(positionCourante.zxy)) - 0.5;\n        distanceParcourue -= distanceSurface;\n        nombreIterations += 1.0;\n    }\n\n    couleurSortie += exp(distanceParcourue / 20.0);\n}*/",
+   "name": "Image",
+   "description": "",
+   "type": "image"
+  }
+ ]
+}
