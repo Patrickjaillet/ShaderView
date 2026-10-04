@@ -232,7 +232,7 @@ export function construireTextureVisualiseur(trame) {
  * @param {AudioContext} contexteAudio utilisé uniquement pour créer l'AudioBuffer (`createBuffer`)
  * @param {string} code code utilisateur de la passe « sound », déjà converti (convertirGles1VersGles3)
  * @param {string|null} commun code « common », déjà converti, ou null
- * @param {{ dureeSecondes?: number, frequenceEchantillonnage?: number, surProgres?: (fait: number, total: number) => void|Promise<void> }} [options]
+ * @param {{ dureeSecondes?: number, frequenceEchantillonnage?: number, surProgres?: (fait: number, total: number) => void|Promise<void>, signal?: AbortSignal }} [options]
  * @returns {Promise<AudioBuffer>}
  * @throws {ErreurCompilation}
  */
@@ -240,7 +240,15 @@ export async function rendreSonHorsLigne(gl, contexteAudio, code, commun, {
   dureeSecondes = DUREE_PAR_DEFAUT_SECONDES,
   frequenceEchantillonnage = 44100,
   surProgres,
+  signal,
 } = {}) {
+  const verifierAnnulation = () => {
+    if (!signal?.aborted) return;
+    const erreur = new Error('Rendu audio annulé.');
+    erreur.name = 'AbortError';
+    throw erreur;
+  };
+  verifierAnnulation();
   const compilation = compilerPasse(gl, code, commun, { son: true });
   const nombreEchantillons = calculerNombreEchantillons(dureeSecondes, frequenceEchantillonnage);
   const nombreBlocs = calculerNombreBlocs(dureeSecondes, frequenceEchantillonnage);
@@ -264,6 +272,7 @@ export async function rendreSonHorsLigne(gl, contexteAudio, code, commun, {
     if (compilation.emplacements.iResolution !== null) gl.uniform3fv(compilation.emplacements.iResolution, [TAILLE_BLOC_SON, TAILLE_BLOC_SON, 1]);
     if (compilation.emplacements.iSampleRate !== null) gl.uniform1f(compilation.emplacements.iSampleRate, frequenceEchantillonnage);
     for (let bloc = 0; bloc < nombreBlocs; bloc += 1) {
+      verifierAnnulation();
       const decalageBloc = bloc * ECHANTILLONS_PAR_BLOC;
       if (compilation.emplacements.iBlockOffset !== null) gl.uniform1i(compilation.emplacements.iBlockOffset, decalageBloc);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -271,6 +280,7 @@ export async function rendreSonHorsLigne(gl, contexteAudio, code, commun, {
       copierBlocVersEchantillons(pixels, gauche, droite, decalageBloc, nombreEchantillons);
       if (surProgres) await surProgres(bloc + 1, nombreBlocs);
     }
+    verifierAnnulation();
   } finally {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.deleteFramebuffer(tamponCadre);
@@ -402,4 +412,18 @@ export class LecteurAudio {
     if (this._enMarche) this.pause();
     this._gain.disconnect();
   }
+}
+
+/**
+ * Aligne l'horloge du shader sur la position réelle du lecteur audio.
+ * L'horloge audio est la référence afin que les retards d'une image ne créent pas
+ * de dérive entre `iTime` et le son entendu.
+ * @param {{ temps: number, avancer: (deltaSecondes: number) => void }} horloge
+ * @param {LecteurAudio} lecteur
+ * @returns {boolean} vrai si l'horloge a été synchronisée
+ */
+export function synchroniserHorlogeAvecAudio(horloge, lecteur) {
+  if (!lecteur.enMarche) return false;
+  horloge.avancer(Math.max(0, lecteur.position - horloge.temps));
+  return true;
 }

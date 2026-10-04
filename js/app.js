@@ -29,7 +29,7 @@ import { ErreurParseur, parserShader } from './parser.js';
 import { ErreurCompilation, ErreurContexte, MoteurRendu, TAILLE_FACE_CUBEMAP, convertirGles1VersGles3, convertirShaderNormalise } from './renderer.js';
 import { decoderImage, genererMediaSubstitue, resoudreNomMedia } from './media.js';
 import { CANAUX_AVEC_MEDIA } from './shader-meta.js';
-import { LecteurAudio, TAILLE_FFT, construireTextureVisualiseur, rendreSonHorsLigne } from './audio.js';
+import { LecteurAudio, TAILLE_FFT, construireTextureVisualiseur, rendreSonHorsLigne, synchroniserHorlogeAvecAudio } from './audio.js';
 import { Inspecteur, elementsDepuisDocument } from './inspector.js';
 import { GenerateurMiniatures } from './thumbnails.js';
 import { ExportVideo, FORMAT_EXPORT, nomFichierExport as fabriquerNomFichierExport } from './export/video.js';
@@ -52,6 +52,9 @@ const etat = {
   boucleActive: false,
   contexteAudio: null,
   lecteurSon: null,
+  preparationSon: null,
+  annulationPreparationSon: null,
+  renduSonEnCours: false,
   // Entrées music/musicstream actives, par src : { lecteur: LecteurAudio, trame: Float32Array }.
   // Leur texture visualiseur (FFT, 512 × 2) est recalculée à chaque image tant que la
   // lecture est en cours (voir demarrerBoucle, mettreAJourVisualiseurs).
@@ -190,33 +193,51 @@ function definirDisponibiliteTransport(disponible) {
 }
 
 function brancherTransport() {
-  el.transportLecture.addEventListener('click', () => {
+  el.transportLecture.addEventListener('click', async () => {
     if (etat.moteur === null || etat.exportEnCours) return;
     const horloge = etat.moteur.horloge;
-    if (horloge.enMarche) horloge.pause();
+    if (horloge.enMarche) mettreEnPauseSynchronisee();
     else {
-      if (horloge.temps >= DUREE_TRANSPORT_SECONDES) {
+      const limite = Math.min(etat.lecteurSon?.duree ?? DUREE_TRANSPORT_SECONDES, DUREE_TRANSPORT_SECONDES);
+      if (horloge.temps >= limite) {
         horloge.remettreAZero();
+        if (etat.lecteurSon !== null) etat.lecteurSon.sauterA(0);
         etat.moteur.reinitialiserTampons();
       }
-      horloge.lire();
+      if (etat.lecteurSon !== null) {
+        try {
+          await demarrerLectureSonSynchronisee();
+        } catch (e) {
+          etat.inspecteur.definirEtatSon(false, traduire('audio.playbackFailed', { message: e instanceof Error ? e.message : String(e) }));
+        }
+      } else horloge.lire();
     }
     mettreAJourTransport();
   });
   el.transportReset.addEventListener('click', () => {
     if (etat.moteur === null || etat.exportEnCours) return;
+    if (etat.lecteurSon?.enMarche) etat.lecteurSon.pause();
+    if (etat.lecteurSon !== null) etat.lecteurSon.sauterA(0);
     etat.moteur.horloge.pause();
     etat.moteur.horloge.remettreAZero();
     etat.moteur.reinitialiserTampons();
+    if (etat.normaliseActive?.son !== null && etat.normaliseActive?.son !== undefined) {
+      etat.inspecteur.definirEtatSon(false, traduire('audio.paused'));
+    }
     el.transportEtat.textContent = '';
     mettreAJourTransport();
   });
   el.transportPosition.addEventListener('input', () => {
     if (etat.moteur === null || etat.exportEnCours) return;
-    const secondes = Number(el.transportPosition.value);
+    const secondes = Math.min(Number(el.transportPosition.value), DUREE_TRANSPORT_SECONDES, etat.lecteurSon?.duree ?? DUREE_TRANSPORT_SECONDES);
+    el.transportPosition.value = String(secondes);
     const horloge = etat.moteur.horloge;
+    if (etat.lecteurSon !== null) etat.lecteurSon.sauterA(secondes);
     horloge.definirEtat(secondes, Math.round(secondes * 30), 0);
     etat.moteur.reinitialiserTampons();
+    if (etat.lecteurSon !== null) {
+      etat.inspecteur.definirEtatSon(etat.lecteurSon.enMarche, traduire(etat.lecteurSon.enMarche ? 'audio.synchronized' : 'audio.paused'));
+    }
     mettreAJourTransport();
   });
   el.transportPleinEcran.addEventListener('click', async () => {
@@ -273,22 +294,50 @@ function demarrerBoucle() {
     if (etat.moteur !== null && !etat.exportEnCours) {
       const deltaSecondes = dernierHorodatage === null ? 0 : (horodatage - dernierHorodatage) / 1000;
       dernierHorodatage = horodatage;
-      if (etat.moteur.horloge.enMarche) {
-        etat.moteur.horloge.avancer(deltaSecondes);
-        if (etat.moteur.horloge.temps >= DUREE_TRANSPORT_SECONDES) {
-          if (el.transportBoucle?.checked) {
-            etat.moteur.horloge.remettreAZero();
-            etat.moteur.reinitialiserTampons();
+      const horloge = etat.moteur.horloge;
+      if (horloge.enMarche) {
+        const lecteur = etat.lecteurSon;
+        if (lecteur !== null) {
+          if (!lecteur.enMarche || lecteur.position >= lecteur.duree) {
+            const limite = Math.min(DUREE_TRANSPORT_SECONDES, lecteur.duree);
+            if (el.transportBoucle?.checked) {
+              if (lecteur.enMarche) lecteur.pause();
+              lecteur.sauterA(0);
+              horloge.remettreAZero();
+              etat.moteur.reinitialiserTampons();
+              void demarrerLectureSonSynchronisee();
+            } else {
+              if (lecteur.enMarche) lecteur.pause();
+              horloge.definirEtat(limite, Math.round(limite * 30), 0);
+              horloge.pause();
+              etat.inspecteur.definirEtatSon(false, traduire('audio.paused'));
+            }
           } else {
-            etat.moteur.horloge.sauterA(DUREE_TRANSPORT_SECONDES);
-            etat.moteur.horloge.pause();
+            synchroniserHorlogeAvecAudio(horloge, lecteur);
+          }
+        } else {
+          horloge.avancer(deltaSecondes);
+        }
+        if (horloge.enMarche && horloge.temps >= DUREE_TRANSPORT_SECONDES) {
+          if (el.transportBoucle?.checked) {
+            if (etat.lecteurSon?.enMarche) etat.lecteurSon.pause();
+            if (etat.lecteurSon !== null) etat.lecteurSon.sauterA(0);
+            horloge.remettreAZero();
+            etat.moteur.reinitialiserTampons();
+            if (etat.lecteurSon !== null) void demarrerLectureSonSynchronisee();
+          } else {
+            if (etat.lecteurSon?.enMarche) etat.lecteurSon.pause();
+            horloge.definirEtat(DUREE_TRANSPORT_SECONDES, Math.round(DUREE_TRANSPORT_SECONDES * 30), 0);
+            horloge.pause();
           }
         }
       }
-      mettreAJourVisualiseurs();
-      etat.moteur.rendre();
+      if (!etat.renduSonEnCours) {
+        mettreAJourVisualiseurs();
+        etat.moteur.rendre();
+        mettreAJourStatsPerf(deltaSecondes);
+      }
       mettreAJourTransport();
-      mettreAJourStatsPerf(deltaSecondes);
     }
     requestAnimationFrame(image);
   };
@@ -311,7 +360,7 @@ function demarrerBoucle() {
 function rendreSelection(shader) {
   if (etat.moteur === null) return;
   etat.moteur.horloge.remettreAZero();
-  etat.moteur.horloge.lire();
+  etat.moteur.horloge.pause();
   let normalise;
   try {
     normalise = parserShader(shader);
@@ -333,6 +382,7 @@ function rendreSelection(shader) {
     throw e;
   }
   etat.normaliseActive = normalise;
+  if (normalise.son === null) etat.moteur.horloge.lire();
   return normalise;
 }
 
@@ -351,8 +401,21 @@ function contexteAudio() {
   return etat.contexteAudio;
 }
 
+function deverrouillerAudioDepuisInteraction() {
+  try {
+    return contexteAudio().resume().then(() => true, () => false);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
 function arreterSonSelection() {
+  if (etat.annulationPreparationSon !== null) {
+    etat.annulationPreparationSon.abort();
+    etat.annulationPreparationSon = null;
+  }
   if (etat.lecteurSon !== null) { etat.lecteurSon.detruire(); etat.lecteurSon = null; }
+  if (etat.moteur !== null) etat.moteur.horloge.pause();
   for (const { lecteur } of etat.visualiseursMusique.values()) lecteur.detruire();
   etat.visualiseursMusique.clear();
   etat.entreesMusiqueNonResolues.clear();
@@ -367,16 +430,21 @@ function arreterSonSelection() {
  * sélection ; abandonné sans effet si une autre sélection a eu lieu pendant le calcul.
  * @param {import('./parser.js').ShaderNormalise} normalise shader déjà converti (voir convertirShaderNormalise)
  * @param {number} jeton valeur de etat.jetonSelection au moment de l'appel
+ * @param {Promise<boolean>} activationAudio déverrouillage tenté pendant le geste de sélection
  */
-async function preparerSonSelection(normalise, jeton) {
+async function preparerSonSelection(normalise, jeton, activationAudio) {
   if (normalise.son === null || etat.moteur === null) return;
   etat.inspecteur.afficherControleSon();
   etat.inspecteur.definirEtatSon(false, traduire('audio.prepare'));
   const code = convertirGles1VersGles3(normalise.son.code);
   const commun = normalise.commun !== null ? convertirGles1VersGles3(normalise.commun.code) : null;
+  const annulation = new AbortController();
+  etat.annulationPreparationSon = annulation;
+  etat.renduSonEnCours = true;
   let tampon;
   try {
     tampon = await rendreSonHorsLigne(etat.moteur.gl, contexteAudio(), code, commun, {
+      signal: annulation.signal,
       surProgres: async (fait, total) => {
         if (jeton === etat.jetonSelection) etat.inspecteur.definirEtatSon(false, traduire('sound.prepareProgress', { percent: Math.round((fait / total) * 100) }));
         // Rend la main au navigateur entre deux blocs : le calcul d'un shader son
@@ -387,24 +455,71 @@ async function preparerSonSelection(normalise, jeton) {
   } catch (e) {
     if (jeton !== etat.jetonSelection) return;
     etat.inspecteur.definirEtatSon(false, e instanceof ErreurCompilation ? traduire('audio.unavailable', { message: e.message }) : (e instanceof Error ? e.message : String(e)));
+    definirDisponibiliteTransport(true);
+    el.exporter.disabled = false;
+    etat.moteur.horloge.lire();
     return;
+  } finally {
+    etat.renduSonEnCours = false;
+    if (etat.annulationPreparationSon === annulation) etat.annulationPreparationSon = null;
   }
   if (jeton !== etat.jetonSelection) return;
   etat.lecteurSon = new LecteurAudio(contexteAudio(), tampon);
   etat.lecteurSon.volume = etat.inspecteur.volumePreference;
-  etat.inspecteur.definirEtatSon(false, traduire('audio.ready', { seconds: tampon.duration.toFixed(1) }));
+  definirDisponibiliteTransport(true);
+  el.exporter.disabled = false;
+  if (await activationAudio) {
+    if (jeton !== etat.jetonSelection) return;
+    try {
+      if (await demarrerLectureSonSynchronisee()) return;
+    } catch (e) {
+      if (jeton !== etat.jetonSelection) return;
+      etat.inspecteur.definirEtatSon(false, traduire('audio.playbackFailed', { message: e instanceof Error ? e.message : String(e) }));
+      mettreAJourTransport();
+      return;
+    }
+  }
+  if (jeton !== etat.jetonSelection) return;
+  etat.inspecteur.definirEtatSon(false, traduire('audio.autoplayBlocked'));
+  mettreAJourTransport();
+}
+
+function mettreEnPauseSynchronisee() {
+  if (etat.moteur === null) return;
+  const horloge = etat.moteur.horloge;
+  if (etat.lecteurSon?.enMarche) {
+    etat.lecteurSon.pause();
+    const position = etat.lecteurSon.position;
+    horloge.definirEtat(position, Math.round(position * 30), 0);
+    etat.inspecteur.definirEtatSon(false, traduire('audio.paused'));
+  }
+  horloge.pause();
+}
+
+async function demarrerLectureSonSynchronisee() {
+  const lecteur = etat.lecteurSon;
+  if (lecteur === null || etat.moteur === null) return false;
+  await lecteur.lire();
+  if (lecteur !== etat.lecteurSon) {
+    lecteur.pause();
+    return false;
+  }
+  const horloge = etat.moteur.horloge;
+  horloge.definirEtat(lecteur.position, Math.round(lecteur.position * 30), 0);
+  horloge.lire();
+  etat.inspecteur.definirEtatSon(true, traduire('audio.synchronized'));
+  mettreAJourTransport();
+  return true;
 }
 
 async function basculerLectureSon() {
   if (etat.lecteurSon === null) return;
   if (etat.lecteurSon.enMarche) {
-    etat.lecteurSon.pause();
-    etat.inspecteur.definirEtatMarcheSon(false);
+    mettreEnPauseSynchronisee();
     return;
   }
   try {
-    await etat.lecteurSon.lire();
-    etat.inspecteur.definirEtatMarcheSon(true);
+    await demarrerLectureSonSynchronisee();
   } catch (e) {
     etat.inspecteur.definirEtatSon(false, traduire('audio.playbackFailed', { message: e instanceof Error ? e.message : String(e) }));
   }
@@ -643,12 +758,14 @@ function appliquerCatalogue(catalogue, { conserverSelection = false } = {}) {
 
 async function selectionner(entree) {
   const catalogue = etat.catalogue;
+  const preparationPrecedente = etat.preparationSon;
   const jeton = ++etat.jetonSelection;
   etat.entreeSelectionnee = entree;
   etat.normaliseActive = null;
   el.exporter.disabled = true;
   etat.inspecteur.definirSelection(entree.cle);
   arreterSonSelection();
+  const activationAudio = entree.son ? deverrouillerAudioDepuisInteraction() : Promise.resolve(false);
 
   etat.inspecteur.viderDetail();
   etat.inspecteur.afficherEnTete(entree);
@@ -669,13 +786,23 @@ async function selectionner(entree) {
     return;
   }
   if (jeton !== etat.jetonSelection) return;
+  if (preparationPrecedente !== null) await preparationPrecedente;
+  if (jeton !== etat.jetonSelection) return;
 
   const normalise = rendreSelection(shader);
   if (normalise !== undefined) {
-    el.exporter.disabled = false;
-    definirDisponibiliteTransport(true);
-    chargerMediasSelection(normalise, catalogue, jeton);
-    preparerSonSelection(normalise, jeton);
+    el.exporter.disabled = normalise.son !== null;
+    if (normalise.son === null) definirDisponibiliteTransport(true);
+    await chargerMediasSelection(normalise, catalogue, jeton);
+    if (jeton !== etat.jetonSelection) return;
+    const preparation = preparerSonSelection(normalise, jeton, activationAudio).catch((e) => {
+      if (jeton !== etat.jetonSelection) return;
+      etat.inspecteur.definirEtatSon(false, e instanceof Error ? e.message : String(e));
+      definirDisponibiliteTransport(true);
+      el.exporter.disabled = false;
+    });
+    etat.preparationSon = preparation;
+    void preparation.then(() => { if (etat.preparationSon === preparation) etat.preparationSon = null; });
   }
 
   const alertes = [];

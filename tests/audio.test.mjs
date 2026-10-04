@@ -17,7 +17,41 @@ import {
   construireTextureVisualiseur,
   copierBlocVersEchantillons,
   fft,
+  rendreSonHorsLigne,
+  synchroniserHorlogeAvecAudio,
 } from '../js/audio.js';
+import { Horloge } from '../js/renderer.js';
+
+test('rendreSonHorsLigne : interrompt avant tout accès GPU quand le signal est annulé', async () => {
+  const annulation = new AbortController();
+  annulation.abort();
+
+  await assert.rejects(
+    rendreSonHorsLigne(null, null, '', null, { signal: annulation.signal }),
+    { name: 'AbortError', message: 'Rendu audio annulé.' },
+  );
+});
+
+test('synchroniserHorlogeAvecAudio : l’horloge suit la position réelle du lecteur', () => {
+  const horloge = new Horloge();
+  horloge.lire();
+  horloge.avancer(1);
+  const lecteur = { enMarche: true, position: 1.125 };
+
+  assert.equal(synchroniserHorlogeAvecAudio(horloge, lecteur), true);
+  assert.equal(horloge.temps, 1.125);
+  assert.ok(Math.abs(horloge.deltaTemps - 0.125) < 1e-9);
+});
+
+test('synchroniserHorlogeAvecAudio : ne fait pas avancer l’horloge si le lecteur est en pause', () => {
+  const horloge = new Horloge();
+  horloge.definirEtat(2, 60, 1 / 30);
+  const lecteur = { enMarche: false, position: 3 };
+
+  assert.equal(synchroniserHorlogeAvecAudio(horloge, lecteur), false);
+  assert.equal(horloge.temps, 2);
+  assert.equal(horloge.image, 60);
+});
 
 // ---------------------------------------------------------------------------
 // Dimensionnement des blocs
