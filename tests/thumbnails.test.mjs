@@ -26,7 +26,7 @@ function entree(cle, extra = {}) {
 }
 
 /** Environnement complet : journal, moteur partagé factice, images factices et planificateur manuel. */
-function creerEnvironnement({ shaders = {}, echecCompilation = {}, echecMoteur = null } = {}) {
+function creerEnvironnement({ shaders = {}, echecCompilation = {}, echecMoteur = null, autoriser = () => true } = {}) {
   const journal = [];
   const taches = [];
   const compteurs = { moteurs: 0, images: 0, lectures: 0 };
@@ -65,7 +65,7 @@ function creerEnvironnement({ shaders = {}, echecCompilation = {}, echecMoteur =
     return shader;
   };
 
-  const generateur = new GenerateurMiniatures({ lireShader, creerMoteur, creerImage, planifier: (t) => taches.push(t) });
+  const generateur = new GenerateurMiniatures({ lireShader, creerMoteur, creerImage, planifier: (t) => taches.push(t), autoriser });
 
   /** Exécute les tâches planifiées jusqu'à épuisement de la file. */
   async function vider() {
@@ -190,6 +190,28 @@ test('génération : les entrées sont traitées dans l\'ordre d\'affichage, une
   assert.equal(env.taches.length, 1, 'une seule tâche planifiée à la fois');
   await env.vider();
   assert.deepEqual(env.journal.filter((j) => j.startsWith('lire:')), ['lire:c', 'lire:a', 'lire:b']);
+});
+
+test('demander : attend l’autorisation avant de lancer un rendu de fond', async () => {
+  let autorise = true;
+  const env = creerEnvironnement({
+    shaders: { a: shaderNomme('A') },
+    autoriser: () => autorise,
+  });
+  const a = entree('a');
+
+  env.generateur.demander([a]);
+  assert.equal(env.taches.length, 1);
+  autorise = false;
+  env.taches.shift()();
+  assert.equal(env.compteurs.lectures, 0);
+  assert.equal(env.generateur.etatDe(a).etat, ETAT_MINIATURE.EN_ATTENTE);
+
+  autorise = true;
+  env.generateur.reprendre();
+  await env.vider();
+  assert.equal(env.generateur.etatDe(a).etat, ETAT_MINIATURE.PRETE);
+  assert.equal(env.compteurs.lectures, 1);
 });
 
 test('demander : un nouvel ordre redonne la priorité aux entrées affichées', async () => {

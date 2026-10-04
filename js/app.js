@@ -50,6 +50,8 @@ const etat = {
   jetonSelection: 0,
   moteur: null,
   boucleActive: false,
+  renduNecessaire: true,
+  selectionEnCours: false,
   contexteAudio: null,
   lecteurSon: null,
   preparationSon: null,
@@ -117,15 +119,20 @@ function brancherSouris() {
     if (etat.moteur === null) return;
     const { x, y } = position(e);
     etat.moteur.souris.deplacer(x, y, el.viewport.height);
+    etat.renduNecessaire = true;
   });
   el.viewport.addEventListener('pointerdown', (e) => {
     if (etat.moteur === null) return;
     const { x, y } = position(e);
     etat.moteur.souris.deplacer(x, y, el.viewport.height);
     etat.moteur.souris.appuyer();
+    etat.renduNecessaire = true;
   });
   window.addEventListener('pointerup', () => {
-    if (etat.moteur !== null) etat.moteur.souris.relacher();
+    if (etat.moteur !== null) {
+      etat.moteur.souris.relacher();
+      etat.renduNecessaire = true;
+    }
   });
 }
 
@@ -135,10 +142,16 @@ function brancherSouris() {
 function brancherClavier() {
   el.viewport.tabIndex = 0;
   el.viewport.addEventListener('keydown', (e) => {
-    if (etat.moteur !== null) etat.moteur.clavier.appuyer(e.keyCode, e.repeat);
+    if (etat.moteur !== null) {
+      etat.moteur.clavier.appuyer(e.keyCode, e.repeat);
+      etat.renduNecessaire = true;
+    }
   });
   el.viewport.addEventListener('keyup', (e) => {
-    if (etat.moteur !== null) etat.moteur.clavier.relacher(e.keyCode);
+    if (etat.moteur !== null) {
+      etat.moteur.clavier.relacher(e.keyCode);
+      etat.renduNecessaire = true;
+    }
   });
 }
 
@@ -212,6 +225,7 @@ function brancherTransport() {
         horloge.remettreAZero();
         positionnerLecteursAudio(0);
         etat.moteur.reinitialiserTampons();
+        etat.renduNecessaire = true;
       }
       if (lecteurAudio !== null) {
         try {
@@ -230,6 +244,7 @@ function brancherTransport() {
     etat.moteur.horloge.pause();
     etat.moteur.horloge.remettreAZero();
     etat.moteur.reinitialiserTampons();
+    etat.renduNecessaire = true;
     if (lecteursAudioSelection().length > 0) {
       etat.inspecteur.definirEtatSon(false, traduire('audio.paused'));
     }
@@ -251,6 +266,7 @@ function brancherTransport() {
     positionnerLecteursAudio(secondes);
     horloge.definirEtat(secondes, Math.round(secondes * 30), 0);
     etat.moteur.reinitialiserTampons();
+    etat.renduNecessaire = true;
     if (lecteursAudio.length > 0) {
       etat.inspecteur.definirEtatSon(false, traduire('audio.paused'));
     }
@@ -335,6 +351,7 @@ function demarrerBoucle() {
               mettreEnPauseLecteursAudio();
               horloge.definirEtat(limite, Math.round(limite * 30), 0);
               horloge.pause();
+              etat.renduNecessaire = true;
               etat.inspecteur.definirEtatSon(false, traduire('audio.paused'));
             }
           } else {
@@ -355,12 +372,15 @@ function demarrerBoucle() {
             const duree = dureeTransport();
             horloge.definirEtat(duree, Math.round(duree * 30), 0);
             horloge.pause();
+            etat.renduNecessaire = true;
           }
         }
       }
-      if (!etat.renduSonEnCours) {
-        mettreAJourVisualiseurs();
+      if (!horloge.enMarche) etat.miniatures?.reprendre();
+      if (!etat.renduSonEnCours && (horloge.enMarche || etat.renduNecessaire)) {
+        mettreAJourVisualiseurs(!horloge.enMarche);
         etat.moteur.rendre();
+        etat.renduNecessaire = false;
         mettreAJourStatsPerf(deltaSecondes);
       }
       mettreAJourTransport();
@@ -385,6 +405,7 @@ function demarrerBoucle() {
  */
 function rendreSelection(shader) {
   if (etat.moteur === null) return;
+  etat.renduNecessaire = true;
   etat.moteur.horloge.remettreAZero();
   etat.moteur.horloge.pause();
   let normalise;
@@ -541,6 +562,7 @@ async function demarrerAudioApresPreparation(activationAudio, { repartirAZero = 
     if (etat.moteur !== null) {
       etat.moteur.horloge.definirEtat(0, 0, 0);
       etat.moteur.reinitialiserTampons();
+      etat.renduNecessaire = true;
     }
   }
   mettreAJourTransport();
@@ -558,6 +580,7 @@ function mettreEnPauseSynchronisee() {
     etat.inspecteur.definirEtatSon(false, traduire('audio.paused'));
   }
   horloge.pause();
+  etat.renduNecessaire = true;
 }
 
 async function demarrerLectureSonSynchronisee() {
@@ -597,11 +620,11 @@ async function basculerLectureSon() {
  * Appelée une fois par image (voir demarrerBoucle) : la trame change en continu tant
  * que la lecture avance, exactement comme Shadertoy recalcule ce canal en direct.
  */
-function mettreAJourVisualiseurs() {
+function mettreAJourVisualiseurs(inclurePause = false) {
   if (etat.visualiseursMusique.size === 0 || etat.moteur === null) return;
   const textures = new Map();
   for (const [src, { lecteur, trame }] of etat.visualiseursMusique) {
-    if (!lecteur.enMarche) continue;
+    if (!inclurePause && !lecteur.enMarche) continue;
     lecteur.copierTrameRecente(trame);
     textures.set(src, { octets: construireTextureVisualiseur(trame), largeur: TAILLE_FFT, hauteur: 2 });
   }
@@ -740,7 +763,10 @@ async function chargerMediasSelection(normalise, catalogue, jeton) {
   if (jeton !== etat.jetonSelection || etat.moteur === null) return;
   const textures = new Map();
   for (const [, src, texture] of resultats) if (texture !== null && src !== null) textures.set(src, texture);
-  if (textures.size > 0) etat.moteur.definirTexturesMedia(textures);
+  if (textures.size > 0) {
+    etat.moteur.definirTexturesMedia(textures);
+    etat.renduNecessaire = true;
+  }
   afficherChoixMusique();
 }
 
@@ -836,65 +862,73 @@ async function selectionner(entree) {
   const catalogue = etat.catalogue;
   const preparationPrecedente = etat.preparationSon;
   const jeton = ++etat.jetonSelection;
-  etat.entreeSelectionnee = entree;
-  etat.normaliseActive = null;
-  el.exporter.disabled = true;
-  etat.inspecteur.definirSelection(entree.cle);
-  arreterSonSelection();
-  const activationAudio = entree.son || entree.canaux.some((type) => type === 'music' || type === 'musicstream')
-    ? deverrouillerAudioDepuisInteraction()
-    : Promise.resolve(false);
-
-  etat.inspecteur.viderDetail();
-  etat.inspecteur.afficherEnTete(entree);
-  definirDisponibiliteTransport(false);
-  el.transportEtat.textContent = '';
-
-  if (entree.erreur !== null) {
-    etat.inspecteur.afficherAlerte(entree.erreur);
-    return;
-  }
-
-  let shader;
+  etat.selectionEnCours = true;
   try {
-    shader = await catalogue.contenu(entree);
-  } catch (e) {
-    if (jeton !== etat.jetonSelection) return;
-    etat.inspecteur.afficherAlerte(e instanceof Error ? e.message : String(e));
-    return;
-  }
-  if (jeton !== etat.jetonSelection) return;
-  if (preparationPrecedente !== null) await preparationPrecedente;
-  if (jeton !== etat.jetonSelection) return;
+    etat.entreeSelectionnee = entree;
+    etat.normaliseActive = null;
+    el.exporter.disabled = true;
+    etat.inspecteur.definirSelection(entree.cle);
+    arreterSonSelection();
+    const activationAudio = entree.son || entree.canaux.some((type) => type === 'music' || type === 'musicstream')
+      ? deverrouillerAudioDepuisInteraction()
+      : Promise.resolve(false);
 
-  const normalise = rendreSelection(shader);
-  if (normalise !== undefined) {
-    el.exporter.disabled = normalise.son !== null;
-    if (normalise.son === null) definirDisponibiliteTransport(true);
-    await chargerMediasSelection(normalise, catalogue, jeton);
-    if (jeton !== etat.jetonSelection) return;
-    mettreAJourTransport();
-    if (normalise.son === null && lecteursAudioSelection().length > 0) {
-      etat.inspecteur.afficherControleSon();
-      if (!(await demarrerAudioApresPreparation(activationAudio))) {
-        el.transportEtat.textContent = traduire('music.autoplayBlockedGeneric');
-        etat.inspecteur.definirEtatSon(false, traduire('music.autoplayBlockedGeneric'));
-      }
+    etat.inspecteur.viderDetail();
+    etat.inspecteur.afficherEnTete(entree);
+    definirDisponibiliteTransport(false);
+    el.transportEtat.textContent = '';
+
+    if (entree.erreur !== null) {
+      etat.inspecteur.afficherAlerte(entree.erreur);
+      return;
     }
-    const preparation = preparerSonSelection(normalise, jeton, activationAudio).catch((e) => {
-      if (jeton !== etat.jetonSelection) return;
-      etat.inspecteur.definirEtatSon(false, e instanceof Error ? e.message : String(e));
-      definirDisponibiliteTransport(true);
-      el.exporter.disabled = false;
-    });
-    etat.preparationSon = preparation;
-    void preparation.then(() => { if (etat.preparationSon === preparation) etat.preparationSon = null; });
-  }
 
-  const alertes = [];
-  if (entree.perime) alertes.push(traduire('catalog.stale'));
-  alertes.push(...entree.avertissements);
-  if (alertes.length > 0) etat.inspecteur.afficherAlerte(alertes.join(' '));
+    let shader;
+    try {
+      shader = await catalogue.contenu(entree);
+    } catch (e) {
+      if (jeton !== etat.jetonSelection) return;
+      etat.inspecteur.afficherAlerte(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    if (jeton !== etat.jetonSelection) return;
+    if (preparationPrecedente !== null) await preparationPrecedente;
+    if (jeton !== etat.jetonSelection) return;
+
+    const normalise = rendreSelection(shader);
+    if (normalise !== undefined) {
+      el.exporter.disabled = normalise.son !== null;
+      if (normalise.son === null) definirDisponibiliteTransport(true);
+      await chargerMediasSelection(normalise, catalogue, jeton);
+      if (jeton !== etat.jetonSelection) return;
+      mettreAJourTransport();
+      if (normalise.son === null && lecteursAudioSelection().length > 0) {
+        etat.inspecteur.afficherControleSon();
+        if (!(await demarrerAudioApresPreparation(activationAudio))) {
+          el.transportEtat.textContent = traduire('music.autoplayBlockedGeneric');
+          etat.inspecteur.definirEtatSon(false, traduire('music.autoplayBlockedGeneric'));
+        }
+      }
+      const preparation = preparerSonSelection(normalise, jeton, activationAudio).catch((e) => {
+        if (jeton !== etat.jetonSelection) return;
+        etat.inspecteur.definirEtatSon(false, e instanceof Error ? e.message : String(e));
+        definirDisponibiliteTransport(true);
+        el.exporter.disabled = false;
+      });
+      etat.preparationSon = preparation;
+      void preparation.then(() => { if (etat.preparationSon === preparation) etat.preparationSon = null; });
+    }
+
+    const alertes = [];
+    if (entree.perime) alertes.push(traduire('catalog.stale'));
+    alertes.push(...entree.avertissements);
+    if (alertes.length > 0) etat.inspecteur.afficherAlerte(alertes.join(' '));
+  } finally {
+    if (jeton === etat.jetonSelection) {
+      etat.selectionEnCours = false;
+      etat.miniatures?.reprendre();
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1232,6 +1266,7 @@ async function lancerExport(evenement) {
     if (ancienEtatHorloge.marche) moteur.horloge.lire();
     else moteur.horloge.pause();
     moteur.reinitialiserTampons();
+    etat.renduNecessaire = true;
     etat.exportEnCours = false;
     etat.annulationExport = null;
     el.exportLancer.disabled = false;
@@ -1320,6 +1355,11 @@ function demarrer() {
 
   etat.miniatures = new GenerateurMiniatures({
     lireShader: (entree) => etat.catalogue.contenu(entree),
+    // Les compilations/rendus WebGL synchrones des miniatures sont du travail de fond :
+    // ils ne démarrent que lorsque le shader principal est à l'arrêt.
+    autoriser: () => !etat.exportEnCours
+      && !etat.selectionEnCours
+      && etat.moteur?.horloge.enMarche !== true,
   });
 
   etat.inspecteur = new Inspecteur(elementsDepuisDocument(), {

@@ -8,8 +8,8 @@
 // Le rendu passe par un unique moteur (`MoteurRendu`, donc un unique contexte WebGL2)
 // partagé par toutes les miniatures et traité une entrée à la fois : un contexte par
 // miniature dépasserait vite la limite de contextes du navigateur. Ce moteur est distinct
-// de celui du viewport principal (800 × 450), qui continue d'afficher le shader
-// sélectionné sans être perturbé par la génération.
+// de celui du viewport principal (800 × 450). L'application suspend toutefois leur
+// génération pendant la lecture du shader principal pour réserver les ressources au rendu actif.
 //
 // Les images survivent aux reconstructions de la liste (filtre, tri, recherche). Une entrée est
 // identifiée par sa clé et l'empreinte du fichier : une modification invalide son image.
@@ -161,6 +161,7 @@ export class GenerateurMiniatures {
    * @param {() => HTMLImageElement} [options.creerImage] fabrique les éléments image dédiés
    * @param {(canevas: HTMLCanvasElement) => string} [options.encoderImage] sérialise l'image rendue en PNG
    * @param {(tache: () => void) => void} [options.planifier] planifie la prochaine génération
+   * @param {() => boolean} [options.autoriser] indique si le rendu de fond peut démarrer
    * @param {number} [options.temps] temps de capture de l'image statique, en secondes
    */
   constructor({
@@ -169,6 +170,7 @@ export class GenerateurMiniatures {
     creerImage = creerImageNavigateur,
     encoderImage = (canevas) => canevas.toDataURL('image/png'),
     planifier = planifierImageSuivante,
+    autoriser = () => true,
     temps = TEMPS_CAPTURE_SECONDES,
   }) {
     this._lireShader = lireShader;
@@ -176,6 +178,7 @@ export class GenerateurMiniatures {
     this._creerImage = creerImage;
     this._encoderImage = encoderImage;
     this._planifier = planifier;
+    this._autoriser = autoriser;
     this._temps = temps;
     /** @type {Map<string, Fiche>} */
     this._fiches = new Map();
@@ -234,6 +237,11 @@ export class GenerateurMiniatures {
     this._planifierSuite();
   }
 
+  /** Reprend la file si le travail de fond est désormais autorisé. */
+  reprendre() {
+    this._planifierSuite();
+  }
+
   /**
    * État d'une entrée, ou null si elle est inconnue du générateur.
    * @param {import('./catalog.js').Entree} entree
@@ -283,16 +291,17 @@ export class GenerateurMiniatures {
   // -------------------------------------------------------------------------
 
   _planifierSuite() {
-    if (this._planifie || this._enCours || this._file.length === 0) return;
+    if (this._planifie || this._enCours || this._file.length === 0 || !this._autoriser()) return;
     this._planifie = true;
     this._planifier(() => {
       this._planifie = false;
+      if (!this._autoriser()) return;
       this._traiterSuivante();
     });
   }
 
   async _traiterSuivante() {
-    if (this._enCours) return;
+    if (this._enCours || !this._autoriser()) return;
     const cle = this._file.shift();
     const fiche = cle === undefined ? undefined : this._fiches.get(cle);
     if (fiche === undefined || fiche.etat !== ETAT_MINIATURE.EN_ATTENTE) {
@@ -321,6 +330,11 @@ export class GenerateurMiniatures {
       if (jeton !== this._jeton) {
         // Catalogue remplacé pendant la lecture : la liste redemandera cette entrée si elle existe encore.
         this._definirEtat(fiche, ETAT_MINIATURE.EN_ATTENTE, null);
+        return;
+      }
+      if (!this._autoriser()) {
+        this._definirEtat(fiche, ETAT_MINIATURE.EN_ATTENTE, null);
+        this._file.unshift(cleMiniature(fiche.entree));
         return;
       }
       const normalise = convertirShaderNormalise(parserShader(shader));
