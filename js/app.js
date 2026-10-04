@@ -198,13 +198,14 @@ function brancherTransport() {
     const horloge = etat.moteur.horloge;
     if (horloge.enMarche) mettreEnPauseSynchronisee();
     else {
-      const limite = Math.min(etat.lecteurSon?.duree ?? DUREE_TRANSPORT_SECONDES, DUREE_TRANSPORT_SECONDES);
+      const lecteurAudio = lecteurReferenceAudio();
+      const limite = Math.min(lecteurAudio?.duree ?? DUREE_TRANSPORT_SECONDES, DUREE_TRANSPORT_SECONDES);
       if (horloge.temps >= limite) {
         horloge.remettreAZero();
-        if (etat.lecteurSon !== null) etat.lecteurSon.sauterA(0);
+        positionnerLecteursAudio(0);
         etat.moteur.reinitialiserTampons();
       }
-      if (etat.lecteurSon !== null) {
+      if (lecteurAudio !== null) {
         try {
           await demarrerLectureSonSynchronisee();
         } catch (e) {
@@ -216,12 +217,12 @@ function brancherTransport() {
   });
   el.transportReset.addEventListener('click', () => {
     if (etat.moteur === null || etat.exportEnCours) return;
-    if (etat.lecteurSon?.enMarche) etat.lecteurSon.pause();
-    if (etat.lecteurSon !== null) etat.lecteurSon.sauterA(0);
+    mettreEnPauseLecteursAudio();
+    positionnerLecteursAudio(0);
     etat.moteur.horloge.pause();
     etat.moteur.horloge.remettreAZero();
     etat.moteur.reinitialiserTampons();
-    if (etat.normaliseActive?.son !== null && etat.normaliseActive?.son !== undefined) {
+    if (lecteursAudioSelection().length > 0) {
       etat.inspecteur.definirEtatSon(false, traduire('audio.paused'));
     }
     el.transportEtat.textContent = '';
@@ -229,14 +230,22 @@ function brancherTransport() {
   });
   el.transportPosition.addEventListener('input', () => {
     if (etat.moteur === null || etat.exportEnCours) return;
-    const secondes = Math.min(Number(el.transportPosition.value), DUREE_TRANSPORT_SECONDES, etat.lecteurSon?.duree ?? DUREE_TRANSPORT_SECONDES);
+    const secondes = Math.min(Number(el.transportPosition.value), DUREE_TRANSPORT_SECONDES, lecteurReferenceAudio()?.duree ?? DUREE_TRANSPORT_SECONDES);
     el.transportPosition.value = String(secondes);
     const horloge = etat.moteur.horloge;
-    if (etat.lecteurSon !== null) etat.lecteurSon.sauterA(secondes);
+    const lecteursAudio = lecteursAudioSelection();
+    const audioEnMarche = lecteursAudio.some((lecteur) => lecteur.enMarche);
+    if (audioEnMarche) mettreEnPauseLecteursAudio();
+    positionnerLecteursAudio(secondes);
+    if (audioEnMarche) {
+      void demarrerLectureSonSynchronisee().catch((e) => {
+        etat.inspecteur.definirEtatSon(false, traduire('audio.playbackFailed', { message: e instanceof Error ? e.message : String(e) }));
+      });
+    }
     horloge.definirEtat(secondes, Math.round(secondes * 30), 0);
     etat.moteur.reinitialiserTampons();
-    if (etat.lecteurSon !== null) {
-      etat.inspecteur.definirEtatSon(etat.lecteurSon.enMarche, traduire(etat.lecteurSon.enMarche ? 'audio.synchronized' : 'audio.paused'));
+    if (lecteursAudio.length > 0) {
+      etat.inspecteur.definirEtatSon(audioEnMarche, traduire(audioEnMarche ? 'audio.synchronized' : 'audio.paused'));
     }
     mettreAJourTransport();
   });
@@ -296,18 +305,18 @@ function demarrerBoucle() {
       dernierHorodatage = horodatage;
       const horloge = etat.moteur.horloge;
       if (horloge.enMarche) {
-        const lecteur = etat.lecteurSon;
+        const lecteur = lecteurReferenceAudio();
         if (lecteur !== null) {
           if (!lecteur.enMarche || lecteur.position >= lecteur.duree) {
             const limite = Math.min(DUREE_TRANSPORT_SECONDES, lecteur.duree);
             if (el.transportBoucle?.checked) {
-              if (lecteur.enMarche) lecteur.pause();
-              lecteur.sauterA(0);
+              mettreEnPauseLecteursAudio();
+              positionnerLecteursAudio(0);
               horloge.remettreAZero();
               etat.moteur.reinitialiserTampons();
               void demarrerLectureSonSynchronisee();
             } else {
-              if (lecteur.enMarche) lecteur.pause();
+              mettreEnPauseLecteursAudio();
               horloge.definirEtat(limite, Math.round(limite * 30), 0);
               horloge.pause();
               etat.inspecteur.definirEtatSon(false, traduire('audio.paused'));
@@ -320,13 +329,13 @@ function demarrerBoucle() {
         }
         if (horloge.enMarche && horloge.temps >= DUREE_TRANSPORT_SECONDES) {
           if (el.transportBoucle?.checked) {
-            if (etat.lecteurSon?.enMarche) etat.lecteurSon.pause();
-            if (etat.lecteurSon !== null) etat.lecteurSon.sauterA(0);
+            mettreEnPauseLecteursAudio();
+            positionnerLecteursAudio(0);
             horloge.remettreAZero();
             etat.moteur.reinitialiserTampons();
-            if (etat.lecteurSon !== null) void demarrerLectureSonSynchronisee();
+            if (lecteursAudioSelection().length > 0) void demarrerLectureSonSynchronisee();
           } else {
-            if (etat.lecteurSon?.enMarche) etat.lecteurSon.pause();
+            mettreEnPauseLecteursAudio();
             horloge.definirEtat(DUREE_TRANSPORT_SECONDES, Math.round(DUREE_TRANSPORT_SECONDES * 30), 0);
             horloge.pause();
           }
@@ -484,12 +493,45 @@ async function preparerSonSelection(normalise, jeton, activationAudio) {
   mettreAJourTransport();
 }
 
+function lecteursAudioSelection() {
+  return [
+    ...(etat.lecteurSon === null ? [] : [etat.lecteurSon]),
+    ...[...etat.visualiseursMusique.values()].map(({ lecteur }) => lecteur),
+  ];
+}
+
+function lecteurReferenceAudio() {
+  return etat.lecteurSon ?? etat.visualiseursMusique.values().next().value?.lecteur ?? null;
+}
+
+function mettreEnPauseLecteursAudio() {
+  for (const lecteur of lecteursAudioSelection()) lecteur.pause();
+}
+
+function positionnerLecteursAudio(secondes) {
+  for (const lecteur of lecteursAudioSelection()) lecteur.sauterA(secondes);
+}
+
+async function demarrerAudioApresPreparation(activationAudio, { repartirAZero = false } = {}) {
+  if (lecteursAudioSelection().length === 0 || !(await activationAudio)) return false;
+  if (repartirAZero) {
+    mettreEnPauseLecteursAudio();
+    positionnerLecteursAudio(0);
+    if (etat.moteur !== null) {
+      etat.moteur.horloge.definirEtat(0, 0, 0);
+      etat.moteur.reinitialiserTampons();
+    }
+  }
+  return demarrerLectureSonSynchronisee();
+}
+
 function mettreEnPauseSynchronisee() {
   if (etat.moteur === null) return;
   const horloge = etat.moteur.horloge;
-  if (etat.lecteurSon?.enMarche) {
-    etat.lecteurSon.pause();
-    const position = etat.lecteurSon.position;
+  const lecteur = lecteurReferenceAudio();
+  if (lecteur?.enMarche) {
+    mettreEnPauseLecteursAudio();
+    const position = lecteur.position;
     horloge.definirEtat(position, Math.round(position * 30), 0);
     etat.inspecteur.definirEtatSon(false, traduire('audio.paused'));
   }
@@ -497,11 +539,12 @@ function mettreEnPauseSynchronisee() {
 }
 
 async function demarrerLectureSonSynchronisee() {
-  const lecteur = etat.lecteurSon;
+  const lecteurs = lecteursAudioSelection();
+  const lecteur = lecteurReferenceAudio();
   if (lecteur === null || etat.moteur === null) return false;
-  await lecteur.lire();
-  if (lecteur !== etat.lecteurSon) {
-    lecteur.pause();
+  await Promise.all(lecteurs.map((lecteurAudio) => lecteurAudio.lire()));
+  if (lecteur !== lecteurReferenceAudio()) {
+    mettreEnPauseLecteursAudio();
     return false;
   }
   const horloge = etat.moteur.horloge;
@@ -513,8 +556,9 @@ async function demarrerLectureSonSynchronisee() {
 }
 
 async function basculerLectureSon() {
-  if (etat.lecteurSon === null) return;
-  if (etat.lecteurSon.enMarche) {
+  const lecteur = lecteurReferenceAudio();
+  if (lecteur === null) return;
+  if (lecteur.enMarche) {
     mettreEnPauseSynchronisee();
     return;
   }
@@ -580,15 +624,17 @@ function entreesMediaUniques(normalise) {
 function definirLecteurMusique(src, tampon) {
   const existant = etat.visualiseursMusique.get(src);
   if (existant !== undefined) existant.lecteur.detruire();
-  etat.visualiseursMusique.set(src, { lecteur: new LecteurAudio(contexteAudio(), tampon), trame: new Float32Array(TAILLE_FFT) });
+  const lecteur = new LecteurAudio(contexteAudio(), tampon);
+  lecteur.volume = etat.inspecteur.volumePreference;
+  etat.visualiseursMusique.set(src, { lecteur, trame: new Float32Array(TAILLE_FFT) });
 }
 
 /**
  * Résout une entrée `music`/`musicstream` vers un lecteur audio : décode le fichier
  * reconnu dans `shaders/media/` et enregistre son visualiseur (voir
- * mettreAJourVisualiseurs, appelée à chaque image tant que la lecture avance). Ne
- * démarre jamais la lecture elle-même (politique d'autoplay : geste utilisateur requis ;
- * seule la passe « sound » a un contrôle de lecture aujourd'hui). Si le fichier
+ * mettreAJourVisualiseurs, appelée à chaque image tant que la lecture avance). La
+ * sélection démarre le lecteur après le chargement si le navigateur l'autorise.
+ * Si le fichier
  * d'origine n'est pas fourni, l'entrée est signalée à l'inspecteur pour que
  * l'utilisateur puisse choisir une piste de remplacement dans la bibliothèque audio
  * (voir choisirPisteManuelle) plutôt que de rester silencieuse sans recours.
@@ -695,22 +741,29 @@ function afficherChoixMusique() {
  * Applique la piste choisie manuellement par l'utilisateur pour un canal
  * music/musicstream non résolu : décode la piste de la bibliothèque audio, remplace
  * la substitution procédurale par le lecteur/visualiseur réel (voir
- * definirLecteurMusique). Abandonné sans effet si le shader a changé depuis (le `src`
- * n'identifierait plus la bonne entrée).
+ * definirLecteurMusique), puis démarre le son synchronisé avec l'image si le navigateur
+ * l'autorise. Le sélecteur reste disponible pour pouvoir remplacer la piste. Abandonné
+ * sans effet si le shader a changé depuis (le `src` n'identifierait plus la bonne entrée).
  * @param {string} src clé de l'entrée (voir entreesMediaUniques)
  * @param {string} nomPiste nom de fichier, tel que listé dans etat.bibliothequeAudio.pistes
  */
 async function choisirPisteManuelle(src, nomPiste) {
   if (etat.bibliothequeAudio === null || !etat.entreesMusiqueNonResolues.has(src)) return;
   const jeton = etat.jetonSelection;
+  const activationAudio = deverrouillerAudioDepuisInteraction();
   etat.inspecteur.definirEtatChoixMusique(src, traduire('music.loading', { name: nomPiste }));
   try {
     const brut = await etat.bibliothequeAudio.lire(nomPiste);
     const tampon = await contexteAudio().decodeAudioData(brut.buffer.slice(brut.byteOffset, brut.byteOffset + brut.byteLength));
     if (jeton !== etat.jetonSelection) return;
     definirLecteurMusique(src, tampon);
-    etat.entreesMusiqueNonResolues.delete(src);
-    etat.inspecteur.definirEtatChoixMusique(src, traduire('music.loaded', { name: nomPiste }));
+    etat.inspecteur.afficherControleSon();
+    if (await demarrerAudioApresPreparation(activationAudio, { repartirAZero: true })) {
+      etat.inspecteur.definirEtatChoixMusique(src, traduire('music.playing', { name: nomPiste }));
+    } else {
+      etat.inspecteur.definirEtatChoixMusique(src, traduire('music.autoplayBlocked', { name: nomPiste }));
+      etat.inspecteur.definirEtatSon(false, traduire('music.autoplayBlockedGeneric'));
+    }
   } catch (e) {
     if (jeton !== etat.jetonSelection) return;
     etat.inspecteur.definirEtatChoixMusique(src, traduire('music.playbackFailed', { message: e instanceof Error ? e.message : String(e) }));
@@ -765,7 +818,9 @@ async function selectionner(entree) {
   el.exporter.disabled = true;
   etat.inspecteur.definirSelection(entree.cle);
   arreterSonSelection();
-  const activationAudio = entree.son ? deverrouillerAudioDepuisInteraction() : Promise.resolve(false);
+  const activationAudio = entree.son || entree.canaux.some((type) => type === 'music' || type === 'musicstream')
+    ? deverrouillerAudioDepuisInteraction()
+    : Promise.resolve(false);
 
   etat.inspecteur.viderDetail();
   etat.inspecteur.afficherEnTete(entree);
@@ -795,6 +850,13 @@ async function selectionner(entree) {
     if (normalise.son === null) definirDisponibiliteTransport(true);
     await chargerMediasSelection(normalise, catalogue, jeton);
     if (jeton !== etat.jetonSelection) return;
+    if (normalise.son === null && lecteursAudioSelection().length > 0) {
+      etat.inspecteur.afficherControleSon();
+      if (!(await demarrerAudioApresPreparation(activationAudio))) {
+        el.transportEtat.textContent = traduire('music.autoplayBlockedGeneric');
+        etat.inspecteur.definirEtatSon(false, traduire('music.autoplayBlockedGeneric'));
+      }
+    }
     const preparation = preparerSonSelection(normalise, jeton, activationAudio).catch((e) => {
       if (jeton !== etat.jetonSelection) return;
       etat.inspecteur.definirEtatSon(false, e instanceof Error ? e.message : String(e));

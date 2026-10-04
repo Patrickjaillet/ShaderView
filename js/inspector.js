@@ -709,7 +709,7 @@ export class Inspecteur {
   // Son (affichage seul ; la lecture elle-même relève de js/app.js)
   // -------------------------------------------------------------------------
 
-  /** Affiche le contrôle de lecture du son (passe « sound » du shader sélectionné). */
+  /** Affiche le contrôle audio du shader sélectionné (passe `sound` ou canal musical). */
   afficherControleSon() {
     this.el.detailSon.hidden = false;
   }
@@ -717,7 +717,7 @@ export class Inspecteur {
   /**
    * Met à jour le texte/l'état du bouton de lecture du son.
    * @param {boolean} enMarche
-   * @param {string} etat texte d'état (ex. « Prêt (12.3 s). », « Préparation du son… 40 % »)
+   * @param {string} etat texte de l'état audio courant
    */
   definirEtatSon(enMarche, etat) {
     this.el.btnSon.setAttribute('aria-pressed', String(enMarche));
