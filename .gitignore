@@ -1,0 +1,17 @@
+# Documents de travail internes (non publiés)
+ROADMAP.md
+MEMOIRE.md
+CLA*.md
+
+# Système et éditeurs
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/
+
+# Sorties et dépendances de build
+node_modules/
+dist/
+*.log
