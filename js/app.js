@@ -267,8 +267,8 @@ function brancherTransport() {
   });
   el.transportPleinEcran.addEventListener('click', async () => {
     try {
-      if (document.fullscreenElement === el.scene) await document.exitFullscreen();
-      else await el.scene.requestFullscreen();
+      if (document.fullscreenElement === el.viewport) await document.exitFullscreen();
+      else await el.viewport.requestFullscreen();
     } catch (erreur) {
       el.transportEtat.textContent = traduire('transport.fullscreenFailed', {
         message: erreur instanceof Error ? erreur.message : String(erreur),
@@ -306,7 +306,7 @@ function brancherTransport() {
     el.transportEtat.textContent = '';
   });
   document.addEventListener('fullscreenchange', () => {
-    el.transportPleinEcran.setAttribute('aria-pressed', String(document.fullscreenElement === el.scene));
+    el.transportPleinEcran.setAttribute('aria-pressed', String(document.fullscreenElement === el.viewport));
   });
 }
 

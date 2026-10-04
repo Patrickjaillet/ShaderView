@@ -152,16 +152,13 @@ a {
   opacity: 0.5;
 }
 
-.scene:fullscreen {
-  justify-content: center;
-  padding: 1rem;
-  overflow: auto;
-  background: var(--fond);
-}
-
-.scene:fullscreen .viewport {
-  width: min(100%, 800px);
-  flex: 0 0 auto;
+.viewport:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  border: 0;
+  border-radius: 0;
 }
 
 .bouton--accent {
