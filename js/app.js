@@ -27,7 +27,7 @@ import {
 } from './catalog.js';
 import { ErreurParseur, parserShader } from './parser.js';
 import { ErreurCompilation, ErreurContexte, MoteurRendu, TAILLE_FACE_CUBEMAP, convertirGles1VersGles3, convertirShaderNormalise } from './renderer.js';
-import { decoderImage, genererMediaSubstitue, resoudreNomMedia } from './media.js';
+import { decoderImage, genererMediaSubstitue, resoudreNomMedia, typeMimeVideo } from './media.js';
 import { CANAUX_AVEC_MEDIA } from './shader-meta.js';
 import { LecteurAudio, TAILLE_FFT, construireTextureVisualiseur, rendreSonHorsLigne, synchroniserHorlogeAvecAudio } from './audio.js';
 import { Inspecteur, elementsDepuisDocument } from './inspector.js';
@@ -61,6 +61,8 @@ const etat = {
   // Leur texture visualiseur (FFT, 512 × 2) est recalculée à chaque image tant que la
   // lecture est en cours (voir demarrerBoucle, mettreAJourVisualiseurs).
   visualiseursMusique: new Map(),
+  /** Vidéos locales du shader en cours : { video, url } (voir chargerVideoLocale), libérées à chaque changement de shader. */
+  videosSelection: [],
   // Pour les statistiques de performance (FPS lissé sur quelques images, voir mettreAJourStatsPerf).
   dernieresDurees: [],
   normaliseActive: null,
@@ -465,6 +467,7 @@ function arreterSonSelection() {
   if (etat.moteur !== null) etat.moteur.horloge.pause();
   for (const { lecteur } of etat.visualiseursMusique.values()) lecteur.detruire();
   etat.visualiseursMusique.clear();
+  libererVideosSelection();
   etat.entreesMusiqueNonResolues.clear();
   etat.inspecteur.definirEtatSon(false, '');
   etat.inspecteur.afficherChoixMusique([]);
@@ -628,7 +631,7 @@ function mettreAJourVisualiseurs(inclurePause = false) {
     lecteur.copierTrameRecente(trame);
     textures.set(src, { octets: construireTextureVisualiseur(trame), largeur: TAILLE_FFT, hauteur: 2 });
   }
-  if (textures.size > 0) etat.moteur.definirTexturesMedia(textures);
+  if (textures.size > 0) etat.moteur.definirTexturesMedia(textures, { fusionner: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -718,8 +721,15 @@ async function preparerVisualiseurMusique(entree, catalogue) {
  * @param {import('./catalog.js').Catalogue} catalogue
  * @returns {Promise<{ octets: Uint8Array, largeur: number, hauteur: number, cubemap?: boolean }|null>} null pour webcam/mic (pas de texture à fournir, la texture de repli reste active)
  */
-async function resoudreTextureMedia(entree, catalogue) {
+async function resoudreTextureMedia(entree, catalogue, jeton) {
   if (entree.type === 'webcam' || entree.type === 'mic') return null;
+  if (entree.type === 'video') {
+    const nomVideo = resoudreNomMedia(entree.src, catalogue.media);
+    if (nomVideo !== null) {
+      const video = await chargerVideoLocale(nomVideo, catalogue, jeton);
+      if (video !== null) return { video, retournementVertical: entree.echantillonnage.retournementVertical };
+    }
+  }
   const taille = entree.type === 'cubemap' ? TAILLE_SUBSTITUTION_CUBEMAP : TAILLE_SUBSTITUTION;
   const nom = resoudreNomMedia(entree.src, catalogue.media);
   if (nom !== null && (entree.type === 'texture' || entree.type === 'cubemap')) {
@@ -745,6 +755,52 @@ async function resoudreTextureMedia(entree, catalogue) {
 }
 
 /**
+ * Charge une vidéo de shaders/media/ dans un élément <video> muet et bouclé (Blob local : aucune requête réseau). Le son
+ * de la vidéo n'est pas lu, seule l'image alimente le canal. Renvoie null si le navigateur ne sait pas la décoder (la
+ * substitution prend alors le relais) ou si le shader a changé pendant le chargement.
+ * @param {string} nom nom de fichier dans shaders/media/
+ * @param {import('./catalog.js').Catalogue} catalogue
+ * @param {number} jeton valeur de etat.jetonSelection au moment de l'appel
+ * @returns {Promise<HTMLVideoElement|null>}
+ */
+async function chargerVideoLocale(nom, catalogue, jeton) {
+  let url = null;
+  try {
+    const brut = await catalogue.contenuMedia(nom);
+    url = URL.createObjectURL(new Blob([brut], { type: typeMimeVideo(nom) }));
+    const video = document.createElement('video');
+    video.muted = true;
+    video.loop = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.src = url;
+    await new Promise((resolu, rejeter) => {
+      const minuteur = setTimeout(() => rejeter(new Error('Délai de chargement de la vidéo dépassé.')), 15000);
+      video.addEventListener('loadeddata', () => { clearTimeout(minuteur); resolu(); }, { once: true });
+      video.addEventListener('error', () => { clearTimeout(minuteur); rejeter(new Error('Vidéo non décodable.')); }, { once: true });
+    });
+    if (jeton !== etat.jetonSelection) throw new Error('Sélection abandonnée.');
+    video.addEventListener('seeked', () => { etat.renduNecessaire = true; });
+    etat.videosSelection.push({ video, url });
+    return video;
+  } catch {
+    if (url !== null) URL.revokeObjectURL(url);
+    return null;
+  }
+}
+
+/** Arrête et libère les vidéos locales du shader en cours (lecture, décodeur, URL du Blob). */
+function libererVideosSelection() {
+  for (const { video, url } of etat.videosSelection) {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    URL.revokeObjectURL(url);
+  }
+  etat.videosSelection = [];
+}
+
+/**
  * Résout et charge les textures de tous les médias externes du shader sélectionné,
  * puis les fournit au moteur. Fonctionne en arrière-plan, sans bloquer l'affichage :
  * le shader s'affiche d'abord avec la texture de repli sur ces canaux (voir
@@ -758,7 +814,7 @@ async function chargerMediasSelection(normalise, catalogue, jeton) {
   etat.entreesMusiqueNonResolues.clear();
   const entrees = entreesMediaUniques(normalise);
   const resultats = await Promise.all(
-    [...entrees.entries()].map(async ([cle, entree]) => [cle, entree.src, await resoudreTextureMedia(entree, catalogue)]),
+    [...entrees.entries()].map(async ([cle, entree]) => [cle, entree.src, await resoudreTextureMedia(entree, catalogue, jeton)]),
   );
   if (jeton !== etat.jetonSelection || etat.moteur === null) return;
   const textures = new Map();
@@ -1192,6 +1248,7 @@ async function lancerExport(evenement) {
     const rendreFrame = async ({ frame, iTime, iTimeDelta }) => {
       if (annulation.signal.aborted) throw new DOMException('Export annulé.', 'AbortError');
       horloge.definirEtat(iTime, Math.round(debut * fps) + frame, iTimeDelta);
+      await moteur.preparerVideos();
       moteur.rendre();
       return moteur.canevas;
     };

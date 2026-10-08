@@ -1057,6 +1057,46 @@ export function typesCanauxDe(passe) {
 }
 
 /**
+ * Position de lecture d'une vidéo pour un temps de shader donné : la vidéo boucle sur sa durée.
+ * @returns {number|null} null si la durée n'est pas (encore) connue
+ */
+export function positionVideo(temps, duree) {
+  if (!Number.isFinite(duree) || duree <= 0 || !Number.isFinite(temps) || temps < 0) return null;
+  return temps % duree;
+}
+
+/**
+ * Écart circulaire (en secondes) entre deux positions d'une vidéo en boucle.
+ */
+export function ecartVideo(position, cible, duree) {
+  const ecart = Math.abs(position - cible);
+  return Math.min(ecart, Math.max(0, duree - ecart));
+}
+
+/** Tolérance de dérive avant de resynchroniser une vidéo qui joue (secondes). */
+export const DERIVE_VIDEO_MAX = 0.3;
+
+/**
+ * Cale un élément vidéo sur l'horloge du shader. Horloge en marche : la vidéo joue et n'est repositionnée que si elle
+ * dérive de plus de DERIVE_VIDEO_MAX ; horloge arrêtée : la vidéo est en pause sur l'image correspondant au temps.
+ * @param {{ duration: number, currentTime: number, paused: boolean, seeking: boolean, play: Function, pause: Function }} video
+ * @returns {boolean} vrai si un repositionnement a été demandé
+ */
+export function synchroniserVideo(video, temps, enMarche) {
+  const cible = positionVideo(temps, video.duration);
+  if (cible === null) return false;
+  let saut = false;
+  if (enMarche) {
+    if (video.paused) { const lecture = video.play(); if (lecture?.catch) lecture.catch(() => {}); }
+    if (!video.seeking && ecartVideo(video.currentTime, cible, video.duration) > DERIVE_VIDEO_MAX) { video.currentTime = cible; saut = true; }
+  } else {
+    if (!video.paused) video.pause();
+    if (!video.seeking && ecartVideo(video.currentTime, cible, video.duration) > 0.001) { video.currentTime = cible; saut = true; }
+  }
+  return saut;
+}
+
+/**
  * Moteur de rendu d'un shader normalisé (modèle `ShaderNormalise` de parser.js) dans
  * un canevas fixe 800 × 450 : exécute dans l'ordre les buffers A à D (résolu par
  * parser.js, rétroaction comprise), les passes cubemap (six faces chacune), puis la
@@ -1087,7 +1127,8 @@ export class MoteurRendu {
     this._tamponsCubemaps = {};
     this._textureClavier = creerTextureClavier(this.gl);
     this._texturePlaceholder = creerTexturePlaceholder(this.gl);
-    this._texturesMedia = new Map(); // src → { texture: WebGLTexture, largeur, hauteur }
+    this._texturesMedia = new Map(); // src → { texture: WebGLTexture, largeur, hauteur[, video, retournementVertical] }
+    this._videosConnues = new Map(); // src → { video, retournementVertical } : recréées après une perte de contexte
     this._arreterSurveillance = surveillerPerteContexte(
       canevas,
       () => { this._libererProgrammes(); this._libererTampons(); this._libererTexturesMedia(); },
@@ -1099,6 +1140,9 @@ export class MoteurRendu {
         // Les textures de médias doivent être redonnées par l'appelant (definirTexturesMedia) :
         // leurs octets décodés ne sont pas conservés par ce moteur après le premier envoi au GPU.
         this._texturesMedia = new Map();
+        for (const [src, { video, retournementVertical }] of this._videosConnues) {
+          this._texturesMedia.set(src, this._creerTextureVideo(video, retournementVertical));
+        }
         if (this._normalise !== null) this.compiler(this._normalise);
       },
     );
@@ -1117,15 +1161,29 @@ export class MoteurRendu {
    * terminée (voir media.js, app.js) ; tant qu'un canal n'a pas de texture ici, il
    * reste lié à la texture de repli (voir _lierCanaux).
    * @param {Map<string, { octets: Uint8Array, largeur: number, hauteur: number, cubemap?: boolean }>} decodees RGBA prêts pour `texImage2D`, par src
+   *        ou `{ video: HTMLVideoElement, retournementVertical?: boolean }` pour une vidéo locale (rafraîchie à chaque image)
+   * @param {{ fusionner?: boolean }} [options] `fusionner` : ajoute ou remplace ces seules entrées sans libérer les autres (mises à jour par image)
    */
-  definirTexturesMedia(decodees) {
+  definirTexturesMedia(decodees, { fusionner = false } = {}) {
     const { gl } = this;
-    const suivant = new Map();
-    for (const [src, { octets, largeur, hauteur, cubemap = false }] of decodees) {
+    const suivant = fusionner ? new Map(this._texturesMedia) : new Map();
+    if (!fusionner) this._videosConnues = new Map();
+    for (const [src, media] of decodees) {
       const existante = this._texturesMedia.get(src);
+      if (media.video !== undefined) {
+        // Vidéo locale : la texture est rafraîchie à chaque image par mettreAJourVideos.
+        const retournementVertical = media.retournementVertical === true;
+        this._videosConnues.set(src, { video: media.video, retournementVertical });
+        if (existante !== undefined && existante.video === media.video) { suivant.set(src, existante); continue; }
+        if (existante !== undefined) gl.deleteTexture(existante.texture);
+        suivant.set(src, this._creerTextureVideo(media.video, retournementVertical));
+        continue;
+      }
+      const { octets, largeur, hauteur, cubemap = false } = media;
+      if (existante?.video !== undefined) this._videosConnues.delete(src);
       // Réutilise la texture existante si ses dimensions n'ont pas changé (ex. une
       // substitution procédurale régénérée à l'identique) ; sinon la (re)crée.
-      if (existante !== undefined && existante.largeur === largeur && existante.hauteur === hauteur) {
+      if (existante !== undefined && existante.video === undefined && existante.largeur === largeur && existante.hauteur === hauteur) {
         gl.bindTexture(cubemap ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D, existante.texture);
         if (cubemap) for (let face = 0; face < 6; face += 1) gl.texSubImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, 0, 0, largeur, hauteur, gl.RGBA, gl.UNSIGNED_BYTE, octets);
         else gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, largeur, hauteur, gl.RGBA, gl.UNSIGNED_BYTE, octets);
@@ -1141,8 +1199,64 @@ export class MoteurRendu {
       if (!cubemap) gl.generateMipmap(gl.TEXTURE_2D);
       suivant.set(src, { texture, largeur, hauteur });
     }
-    for (const [src, { texture }] of this._texturesMedia) if (!suivant.has(src)) gl.deleteTexture(texture);
+    if (!fusionner) {
+      for (const [src, { texture }] of this._texturesMedia) if (!suivant.has(src)) gl.deleteTexture(texture);
+    }
     this._texturesMedia = suivant;
+  }
+
+  _creerTextureVideo(video, retournementVertical) {
+    const { gl } = this;
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    // Noir opaque jusqu'à la première image décodée.
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+    return { texture, largeur: 1, hauteur: 1, video, retournementVertical, derniereImage: null };
+  }
+
+  /**
+   * Cale les vidéos locales sur l'horloge puis envoie leur image courante au GPU. Une vidéo qui n'a pas encore d'image
+   * décodée garde son noir initial. Appelée à chaque image de rendu.
+   */
+  mettreAJourVideos() {
+    const { gl } = this;
+    for (const entree of this._texturesMedia.values()) {
+      const { video } = entree;
+      if (video === undefined) continue;
+      synchroniserVideo(video, this.horloge.temps, this.horloge.enMarche);
+      if (video.readyState < 2 || !(video.videoWidth > 0)) continue;
+      if (entree.derniereImage === video.currentTime && entree.largeur === video.videoWidth) continue;
+      gl.bindTexture(gl.TEXTURE_2D, entree.texture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, entree.retournementVertical);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      entree.largeur = video.videoWidth;
+      entree.hauteur = video.videoHeight;
+      entree.derniereImage = video.currentTime;
+    }
+  }
+
+  /**
+   * Positionne chaque vidéo exactement sur le temps courant de l'horloge et attend que l'image soit décodée. Sert à
+   * l'export, où l'horloge est virtuelle : sans cette attente, l'image rendue dépendrait de la vitesse de décodage.
+   * @param {number} [delaiMs] attente maximale par vidéo
+   */
+  async preparerVideos(delaiMs = 2000) {
+    const attentes = [];
+    for (const { video } of this._texturesMedia.values()) {
+      if (video === undefined) continue;
+      if (!video.paused) video.pause();
+      const cible = positionVideo(this.horloge.temps, video.duration);
+      if (cible === null || ecartVideo(video.currentTime, cible, video.duration) <= 0.001) continue;
+      attentes.push(new Promise((resolu) => {
+        const fin = () => { video.removeEventListener('seeked', fin); clearTimeout(minuteur); resolu(); };
+        const minuteur = setTimeout(fin, delaiMs);
+        video.addEventListener('seeked', fin);
+        video.currentTime = cible;
+      }));
+    }
+    await Promise.all(attentes);
   }
 
   _libererProgrammes() {
@@ -1293,6 +1407,7 @@ export class MoteurRendu {
     const { gl } = this;
     mettreAJourTextureClavier(gl, this._textureClavier, this.clavier.octets);
     this.clavier.consommerAppuis();
+    this.mettreAJourVideos();
 
     const valeursGlobales = calculerUniforms({ largeur: this.canevas.width, hauteur: this.canevas.height }, this.horloge, this.souris);
 
@@ -1326,6 +1441,7 @@ export class MoteurRendu {
     this._libererProgrammes();
     this._libererTampons();
     this._libererTexturesMedia();
+    this._videosConnues = new Map();
     this.gl.deleteTexture(this._textureClavier);
     this.gl.deleteTexture(this._texturePlaceholder);
     this._normalise = null;

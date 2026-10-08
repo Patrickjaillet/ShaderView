@@ -260,6 +260,20 @@ export function classifierMedia(entree, nomsDisponibles) {
 // chargerManifeste ou catalogueDepuisFichiers) : ce module décode ensuite ces octets
 // selon le type de canal, sans connaître leur origine.
 
+const TYPES_MIME_VIDEO = Object.freeze({
+  mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', ogv: 'video/ogg', ogg: 'video/ogg', mov: 'video/quicktime',
+});
+
+/**
+ * Type MIME d'un fichier vidéo d'après son extension (le navigateur en a besoin pour choisir le démuxeur d'un Blob).
+ * @param {string} nom nom de fichier
+ * @returns {string} chaîne vide si l'extension n'est pas reconnue (le navigateur tente alors de détecter le format)
+ */
+export function typeMimeVideo(nom) {
+  const extension = String(nom).split('.').pop().toLowerCase();
+  return TYPES_MIME_VIDEO[extension] ?? '';
+}
+
 /**
  * Décode des octets d'image (JPEG, PNG, WebP…) en `ImageBitmap`, orienté selon le
  * drapeau `vflip` de l'échantillonnage JSON (Shadertoy stocke ses images à l'envers

@@ -2,6 +2,12 @@
 
 © 2026 SANDEFJORD / Patrick JAILLET — Distribué sous licence GPL-3.0-or-later
 
+## Non publié
+
+- Lecture des entrées `video` : un fichier de `shaders/media/` alimente le canal en texture vidéo, calée sur l'horloge du shader
+  (image par image à l'export).
+- Correction : les textures de médias (images, vidéos) ne sont plus libérées pendant la lecture d'une piste `music`/`musicstream`.
+
 ## v1.0.0
 
 Première version publique.
@@ -22,7 +28,7 @@ Première version publique.
 
 ### Limites connues
 
-- La lecture d'une entrée `video` n'est pas implémentée.
+- La lecture d'une entrée `video` n'est pas implémentée (ajoutée après cette version).
 - L'export WebM n'a pas été validé dans un lecteur externe, et la synchronisation audio/vidéo d'un MP4 AAC reste à confirmer à l'écoute.
 - Le repli par téléchargement du navigateur garde l'export complet en mémoire ; l'écriture directe exige l'API File System Access.
 - L'export exige WebCodecs et les codecs correspondants ; la compatibilité Firefox et Safari n'a pas été vérifiée.
