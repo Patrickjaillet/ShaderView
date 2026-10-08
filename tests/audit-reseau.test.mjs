@@ -18,7 +18,7 @@ test('auditerSource : détecte XHR, WebSocket, fetch non autorisé et URL extern
   assert.equal(auditerSource('js/catalog.js', 'await fetch(adresse);').length, 0);
   assert.equal(auditerSource('css/a.css', 'a { background: url(https://cdn.example/x.png); }').length, 1);
   assert.equal(auditerSource('index.html', '<script src="https://cdn.example/x.js"></script>').length, 1);
-  assert.equal(auditerSource('index.html', '<a href="https://patrickjaillet.github.io/shaderview">s</a>').length, 0);
+  assert.equal(auditerSource('index.html', '<a href="https://patrickjaillet.github.io/ShaderView">s</a>').length, 0);
 });
 
 test('auditerCsp : exige default-src et connect-src \'self\', refuse les origines externes', () => {

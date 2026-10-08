@@ -64,7 +64,7 @@ construction côté serveur).
 2. `node tools/build.mjs` : vérifie manifestes, en-têtes SPDX, absence de requête réseau (CSP comprise), dépendances
    consignées, fichiers de publication et tests. Ne publier que si la commande se termine sans erreur.
 3. Pousser sur `main`, puis dans les paramètres du dépôt : *Pages* → source « Deploy from a branch », branche `main`, dossier `/ (root)`.
-4. Vérifier le site publié : https://patrickjaillet.github.io/shaderview (catalogue chargé, un shader rendu, console sans erreur).
+4. Vérifier le site publié : https://patrickjaillet.github.io/ShaderView (catalogue chargé, un shader rendu, console sans erreur).
 
 Les notes de chaque version figurent dans `CHANGELOG.md`.
 
@@ -88,4 +88,4 @@ Les composants tiers éventuels et leurs licences sont consignés dans `THIRD_PA
 ## Contact
 
 - E-mail : sandefjord.development@proton.me
-- Site officiel : https://patrickjaillet.github.io/shaderview
+- Site officiel : https://patrickjaillet.github.io/ShaderView

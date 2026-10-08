@@ -6,7 +6,7 @@
   "type": "module",
   "license": "GPL-3.0-or-later",
   "author": "SANDEFJORD / Patrick JAILLET <sandefjord.development@proton.me>",
-  "homepage": "https://patrickjaillet.github.io/shaderview",
+  "homepage": "https://patrickjaillet.github.io/ShaderView",
   "engines": {
     "node": ">=20"
   },

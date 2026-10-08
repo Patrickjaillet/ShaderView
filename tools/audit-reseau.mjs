@@ -19,7 +19,7 @@ const API_INTERDITES = [
 ];
 const FETCH_AUTORISE = new Set(['js/catalog.js']);
 const URL_ABSOLUE = /(?:(?:src|href)=|url\(|import\s+[^;]*from\s*|fetch\(\s*)['"(]?\s*(?:https?:)?\/\/[^\s'")]+/gi;
-const LIENS_AUTORISES = /^https:\/\/patrickjaillet\.github\.io\/shaderview/;
+const LIENS_AUTORISES = /^https:\/\/patrickjaillet\.github\.io\/ShaderView/;
 
 function fichiers(dossier, extensions, sortie = []) {
   for (const nom of readdirSync(dossier)) {
