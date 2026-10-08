@@ -34,3 +34,9 @@ Les fichiers `.json` du dossier `shaders/` sont des données (exports au format 
 du programme. Chacun reste soumis aux conditions choisies par son auteur ; la licence
 GPL-3.0-or-later du projet s'applique au code de ShaderView (HTML, CSS, JavaScript, outils),
 pas au contenu de ces fichiers.
+
+## Contenu du dossier `audio/`
+
+Les fichiers audio de `audio/` (bibliothèque de pistes de remplacement pour les canaux `music` et `musicstream`) sont des
+données, pas du code du programme. Chacun reste soumis aux droits de son auteur ; la licence GPL-3.0-or-later du projet ne
+s'applique pas à leur contenu. Seules des pistes dont la redistribution est autorisée doivent être publiées dans ce dossier.
