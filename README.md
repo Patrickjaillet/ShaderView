@@ -8,7 +8,7 @@ et les affiche dans un viewport de 800 × 450.
 ## Objectifs
 
 - Inspecteur listant tous les fichiers `.json` du dossier `shaders/`
-- Miniatures images PNG statiques générées automatiquement à partir du shader lui-même, en différé pendant la pause pour préserver la fluidité du shader en lecture
+- Miniatures images PNG statiques générées automatiquement à partir du shader lui-même (un seul rendu hors-écran par entrée, mis en cache selon l'empreinte du fichier, sans animation ni son)
 - Rendu WebGL2 multipasse (buffers A à D, cubemaps, passe `common`), passe son et lecture synchronisée des pistes locales `music`/`musicstream` (dont MP3 décodables par le navigateur)
 - Export vidéo déterministe WebM (VP9/AV1, Opus) et MP4 (H.264, AAC) via WebCodecs, selon les codecs proposés par le navigateur
 - Commandes de lecture, boucle sur 60 secondes (ou sur la durée du MP3 associé), plein écran et capture PNG
@@ -47,11 +47,26 @@ et le glisser-déposer de dossiers ou de fichiers.
 node tools/build-manifest.mjs           # génère shaders/manifest.json (--check : vérifie, --strict : échoue sur erreur)
 node tools/check-headers.mjs            # vérifie les en-têtes de licence des fichiers sources
 node tools/inline-favicon.mjs           # réinjecte branding/favicon.svg dans index.html
+node tools/audit-reseau.mjs             # vérifie l'absence de requête réseau et la CSP
+node tools/build.mjs                    # contrôle complet avant publication
 node --test "tests/*.test.mjs"          # lance les tests automatisés
 ```
 
 Les mêmes commandes sont disponibles via `npm run manifeste`, `en-tetes`, `favicon` et `npm test` (Node.js 20 ou plus récent ;
 aucune dépendance à installer).
+
+## Publication sur GitHub Pages
+
+Le site est entièrement statique : GitHub Pages sert directement la racine du dépôt (fichier `.nojekyll` présent, aucune étape de
+construction côté serveur).
+
+1. `node tools/build-manifest.mjs` après toute modification de `shaders/` ou `audio/`.
+2. `node tools/build.mjs` : vérifie manifestes, en-têtes SPDX, absence de requête réseau (CSP comprise), dépendances
+   consignées, fichiers de publication et tests. Ne publier que si la commande se termine sans erreur.
+3. Pousser sur `main`, puis dans les paramètres du dépôt : *Pages* → source « Deploy from a branch », branche `main`, dossier `/ (root)`.
+4. Vérifier le site publié : https://patrickjaillet.github.io/shaderview (catalogue chargé, un shader rendu, console sans erreur).
+
+Les notes de chaque version figurent dans `CHANGELOG.md`.
 
 ## Visualisation locale
 
