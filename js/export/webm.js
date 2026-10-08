@@ -2,6 +2,8 @@
 // ShaderView — © 2026 SANDEFJORD / Patrick JAILLET
 // Distribué sous licence GPL-3.0-or-later
 
+import { tailleDonnees, donneesOuDescripteur, longueurPartie, estDiffere } from './spool.js';
+
 const encoderTaille = (taille) => {
   for (let longueur = 1; longueur <= 8; longueur += 1) {
     const maximum = 2 ** (7 * longueur) - 2;
@@ -83,7 +85,7 @@ function flottant64(valeur) {
 function blocSimple(piste, temps, cle, donnees) {
   if (temps < -32768 || temps > 32767) throw new RangeError('Décalage de cluster WebM hors limites.');
   const prefixe = concatener(Uint8Array.of(0x80 | piste), entier(temps & 0xffff, 2), Uint8Array.of(cle ? 0x80 : 0));
-  const taille = prefixe.length + donnees.length;
+  const taille = prefixe.length + longueurPartie(donnees);
   return {
     parties: [enteteElement('a3', taille), prefixe, donnees],
     taille: enteteElement('a3', taille).length + taille,
@@ -202,7 +204,7 @@ export function construireFluxWebM({
   ].sort((a, b) => a.timestamp - b.timestamp || a.track - b.track);
   for (const evenement of evenements) {
     if (!Number.isFinite(evenement.timestamp) || evenement.timestamp < 0
-      || !(evenement.data instanceof Uint8Array) || evenement.data.length === 0) {
+      || tailleDonnees(evenement) === 0) {
       throw new TypeError('Un paquet WebM contient un horodatage ou des données invalides.');
     }
   }
@@ -248,7 +250,7 @@ export function construireFluxWebM({
     if (temps - base < -32768 || temps - base > 32767) {
       throw new RangeError('Les paquets WebM sont trop espacés pour un décalage de cluster valide.');
     }
-    groupes.push(blocSimple(evenement.track, temps - base, evenement.track === 2 || videoKeyframe, evenement.data));
+    groupes.push(blocSimple(evenement.track, temps - base, evenement.track === 2 || videoKeyframe, donneesOuDescripteur(evenement)));
   }
   finaliserCluster();
 
@@ -299,10 +301,12 @@ export function construireFluxWebM({
     element('4285', entier(2)),
   ));
   const partiesSegment = [seekHead, info, tracks, ...blocs.flat(), cues];
-  const tailleSegment = partiesSegment.reduce((somme, partie) => somme + partie.length, 0);
+  const tailleSegment = partiesSegment.reduce((somme, partie) => somme + longueurPartie(partie), 0);
   return [ebml, Uint8Array.from([0x18, 0x53, 0x80, 0x67]), encoderTaille(tailleSegment), ...partiesSegment];
 }
 
 export function construireWebM(options) {
-  return concatener(...construireFluxWebM(options));
+  const parties = construireFluxWebM(options);
+  if (parties.some(estDiffere)) throw new TypeError('Des paquets stockés hors mémoire exigent construireFluxWebM.');
+  return concatener(...parties);
 }

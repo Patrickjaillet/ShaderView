@@ -2,6 +2,8 @@
 // ShaderView — © 2026 SANDEFJORD / Patrick JAILLET
 // Distribué sous licence GPL-3.0-or-later
 
+import { tailleDonnees, donneesOuDescripteur, estDiffere } from './spool.js';
+
 const ECHELLE_TEMPS_MP4 = 1_000_000;
 
 function concatener(...morceaux) {
@@ -76,7 +78,7 @@ function dureesCompressees(durees) {
 
 function tableEchantillons(samples, offset, sync = false) {
   const stsc = fullBox('stsc', 0, 0, entier(1, 4), entier(1, 4), entier(samples.length, 4), entier(1, 4));
-  const stsz = fullBox('stsz', 0, 0, entier(0, 4), entier(samples.length, 4), ...samples.map((sample) => entier(sample.data.length, 4)));
+  const stsz = fullBox('stsz', 0, 0, entier(0, 4), entier(samples.length, 4), ...samples.map((sample) => entier(tailleDonnees(sample), 4)));
   const stco = fullBox('stco', 0, 0, entier(1, 4), entier(offset, 4));
   const stss = sync
     ? fullBox('stss', 0, 0, entier(samples.filter((sample) => sample.type === 'key').length, 4),
@@ -248,7 +250,7 @@ function normaliserEchantillons(chunks, { timescale, dureeParDefaut, nom }) {
     if (timestamps[index] <= timestamps[index - 1]) throw new RangeError(`Horodatages non croissants dans le flux ${nom}.`);
   }
   return tries.map((sample, index) => {
-    if (!(sample.data instanceof Uint8Array) || sample.data.length === 0) {
+    if (tailleDonnees(sample) === 0) {
       throw new TypeError(`Échantillon vide ou invalide dans le flux ${nom}.`);
     }
     const timeUnits = Math.round(timestamps[index] * timescale / ECHELLE_TEMPS_MP4);
@@ -335,8 +337,8 @@ export function construireFluxMP4({
     throw new RangeError('Les échantillons AAC sont plus courts que la durée MP4 demandée.');
   }
   const ftyp = boite('ftyp', texte('isom'), entier(0x200, 4), texte('isomiso2avc1mp41'));
-  const tailleVideo = video.reduce((somme, sample) => somme + sample.data.length, 0);
-  const tailleAudio = audio === null ? 0 : audio.samples.reduce((somme, sample) => somme + sample.data.length, 0);
+  const tailleVideo = video.reduce((somme, sample) => somme + tailleDonnees(sample), 0);
+  const tailleAudio = audio === null ? 0 : audio.samples.reduce((somme, sample) => somme + tailleDonnees(sample), 0);
   const donneesOffset = ftyp.length + 8;
   const moovProvisoire = construireMoov({
     video, audio, width, height, avcC: codecPrivate, dureeMovie: dureeDemandee,
@@ -351,11 +353,13 @@ export function construireFluxMP4({
     ftyp,
     moov,
     enteteBoite('mdat', tailleVideo + tailleAudio),
-    ...video.map((sample) => sample.data),
-    ...(audio === null ? [] : audio.samples.map((sample) => sample.data)),
+    ...video.map(donneesOuDescripteur),
+    ...(audio === null ? [] : audio.samples.map(donneesOuDescripteur)),
   ];
 }
 
 export function construireMP4(options) {
-  return concatener(...construireFluxMP4(options));
+  const parties = construireFluxMP4(options);
+  if (parties.some(estDiffere)) throw new TypeError('Des paquets stockés hors mémoire exigent construireFluxMP4.');
+  return concatener(...parties);
 }

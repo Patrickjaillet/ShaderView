@@ -2,6 +2,7 @@
 // ShaderView — © 2026 SANDEFJORD / Patrick JAILLET
 // Distribué sous licence GPL-3.0-or-later
 
+import { creerSpool, longueurPartie, resoudrePartie } from './spool.js';
 import { construireWebM, construireFluxWebM } from './webm.js';
 import { construireMP4, construireFluxMP4 } from './mp4.js';
 
@@ -162,6 +163,7 @@ export class ExportVideo {
     this._support = null;
     this._fluxVideo = null;
     this._fluxAudio = null;
+    this._spool = null;
   }
 
   async support() {
@@ -232,6 +234,7 @@ export class ExportVideo {
     const total = Math.max(1, Math.ceil(this.duree * this.fps));
     this._fluxVideo = null;
     this._fluxAudio = null;
+    this._spool = await creerSpool();
     try {
       let audioBuffer = null;
       if (typeof renderAudio === 'function' || this.audio !== null) {
@@ -247,10 +250,11 @@ export class ExportVideo {
         await this._encoderAudio(audioBuffer, { onProgress, signal, allowWavFallback: false });
       }
       if (signal?.aborted) throw new DOMException('Export annulé.', 'AbortError');
+      if (this._spool !== null) await this._spool.terminer();
       await prochainTour();
       notifier(onProgress, { etape: 'muxage', fait: 0, total: 1, progres: 0, tempsEcoule: 0, tempsRestant: null });
       const parties = this._construirePartiesConteneur();
-      const tailleTotale = parties.reduce((somme, partie) => somme + partie.length, 0);
+      const tailleTotale = parties.reduce((somme, partie) => somme + longueurPartie(partie), 0);
       notifier(onProgress, { etape: 'muxage', fait: 1, total: 1, progres: 1, tempsEcoule: 0, tempsRestant: 0 });
       await this._ecrirePartiesEnFlux(parties, tailleTotale, destination, { onProgress, signal });
       return { format: this.format, taille: tailleTotale, duree: this.duree, fps: this.fps, audioInclus: audioBuffer !== null };
@@ -266,7 +270,17 @@ export class ExportVideo {
     } finally {
       this._fluxVideo = null;
       this._fluxAudio = null;
+      const spool = this._spool;
+      this._spool = null;
+      if (spool !== null) await spool.liberer();
     }
+  }
+
+  // Un paquet encodé est confié au stockage temporaire s'il existe (seule sa référence reste en mémoire).
+  _paquet(data, timestamp, duration, type) {
+    if (this._spool === null) return { data, timestamp, duration, type };
+    const { taille, lire } = this._spool.ajouter(data);
+    return { data: null, taille, lire, timestamp, duration, type };
   }
 
   async *_imagesVirtuelles(renderFrame, { total, onProgress = null, signal = null }) {
@@ -571,8 +585,11 @@ export class ExportVideo {
       sources.set(echantillon.data, regroupees);
     }
     for (let index = 0; index < parties.length; index += 1) {
-      const partie = parties[index];
-      if (!(partie instanceof Uint8Array)) throw new TypeError('Le muxeur a produit une partie de fichier invalide.');
+      const reference = parties[index];
+      if (!(reference instanceof Uint8Array) && !(reference?.differe === true)) {
+        throw new TypeError('Le muxeur a produit une partie de fichier invalide.');
+      }
+      const partie = await resoudrePartie(reference);
       for (let offset = 0; offset < partie.length; offset += 1024 * 1024) {
         if (signal?.aborted) throw new DOMException('Export annulé.', 'AbortError');
         const morceau = partie.subarray(offset, Math.min(partie.length, offset + 1024 * 1024));
@@ -627,12 +644,7 @@ export class ExportVideo {
         const data = new Uint8Array(chunk.byteLength);
         chunk.copyTo(data);
         const duration = Number(chunk.duration);
-        chunks.push({
-          data,
-          timestamp,
-          duration: Number.isFinite(duration) && duration > 0 ? duration : 0,
-          type: chunk.type,
-        });
+        chunks.push(this._paquet(data, timestamp, Number.isFinite(duration) && duration > 0 ? duration : 0, chunk.type));
         notifier(onProgress, progresEstime('encodage-video', chunks.length, nombreImages, debutEncodage, { paquets: chunks.length }));
         const description = metadata.decoderConfig?.description;
         if (description !== undefined) {
@@ -730,12 +742,7 @@ export class ExportVideo {
             const data = new Uint8Array(chunk.byteLength);
             chunk.copyTo(data);
             const duration = Number(chunk.duration);
-            chunks.push({
-              data,
-              timestamp,
-              duration: Number.isFinite(duration) && duration > 0 ? duration : 0,
-              type: 'key',
-            });
+            chunks.push(this._paquet(data, timestamp, Number.isFinite(duration) && duration > 0 ? duration : 0, 'key'));
             notifier(onProgress, progresEstime('encodage-audio', chunks.length, nombrePaquets, debutEncodage, { paquets: chunks.length }));
             const description = metadata.decoderConfig?.description;
             if (description !== undefined) {
