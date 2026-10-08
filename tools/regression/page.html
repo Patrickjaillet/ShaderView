@@ -1,0 +1,258 @@
+<!--
+  SPDX-License-Identifier: GPL-3.0-or-later
+  ShaderView — © 2026 SANDEFJORD / Patrick JAILLET
+  Distribué sous licence GPL-3.0-or-later
+-->
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>ShaderView — banc de régression visuelle</title>
+</head>
+<body>
+  <!-- Page de service du banc de régression (tools/regression-visuelle.mjs) : elle rend un shader à un instant
+       fixe avec le vrai moteur de js/, et renvoie l'image PNG et les erreurs WebGL. Non publiée comme page du site. -->
+  <canvas id="c" width="256" height="144"></canvas>
+  <script type="module">
+    import { parserShader } from '../../js/parser.js';
+    import { ErreurCompilation, MoteurRendu, convertirShaderNormalise } from '../../js/renderer.js';
+    import { genererMediaSubstitue, genererVolumeSubstitue } from '../../js/media.js';
+    import { ExportVideo } from '../../js/export/video.js';
+
+    const canevas = document.getElementById('c');
+    let moteur = null;
+    const TAILLE_TEXTURE = 256;
+    const TAILLE_CUBEMAP = 64;
+
+    // Médias de substitution identiques à ceux de l'application (js/app.js, resoudreTextureMedia).
+    function medias(normalise) {
+      const resultat = new Map();
+      const passes = [normalise.commun, ...Object.values(normalise.buffers), ...Object.values(normalise.cubemaps), normalise.image].filter(Boolean);
+      for (const passe of passes) {
+        for (const entree of passe.entrees) {
+          const src = entree.src ?? entree.type;
+          if (resultat.has(src)) continue;
+          if (entree.type === 'volume') resultat.set(src, genererVolumeSubstitue(src));
+          else if (entree.type === 'cubemap' && entree.idSortie === null) resultat.set(src, { octets: genererMediaSubstitue('cubemap', src, TAILLE_CUBEMAP, TAILLE_CUBEMAP), largeur: TAILLE_CUBEMAP, hauteur: TAILLE_CUBEMAP, cubemap: true });
+          else if (entree.type === 'texture') resultat.set(src, { octets: genererMediaSubstitue('texture', src, TAILLE_TEXTURE, TAILLE_TEXTURE), largeur: TAILLE_TEXTURE, hauteur: TAILLE_TEXTURE, srgb: entree.echantillonnage.srgb });
+        }
+      }
+      return resultat;
+    }
+
+    function erreursGl(gl) {
+      const noms = new Map([[gl.INVALID_ENUM, 'INVALID_ENUM'], [gl.INVALID_VALUE, 'INVALID_VALUE'], [gl.INVALID_OPERATION, 'INVALID_OPERATION'],
+        [gl.OUT_OF_MEMORY, 'OUT_OF_MEMORY'], [gl.INVALID_FRAMEBUFFER_OPERATION, 'INVALID_FRAMEBUFFER_OPERATION']]);
+      const erreurs = [];
+      for (let i = 0; i < 20; i += 1) {
+        const code = gl.getError();
+        if (code === gl.NO_ERROR) break;
+        erreurs.push(noms.get(code) ?? String(code));
+      }
+      return erreurs;
+    }
+
+    // Rend un shader (objet JSON Shadertoy) : `temps` secondes à `fps` images par seconde, toutes les images depuis 0
+    // (les buffers de rétroaction ont besoin de leur historique), horloge et souris déterministes.
+    window.rendreShader = (shader, { temps = 1, fps = 30, souris = null } = {}) => {
+      try {
+        if (moteur === null) moteur = new MoteurRendu(canevas);
+        const normalise = convertirShaderNormalise(parserShader(shader));
+        moteur.compiler(normalise);
+        moteur.definirTexturesMedia(medias(normalise));
+        moteur.reinitialiserTampons();
+        moteur.souris.deplacer(souris?.x ?? 0, souris?.y ?? 0, canevas.height);
+        if (souris?.clic === true) moteur.souris.appuyer();
+        const images = Math.round(temps * fps);
+        for (let image = 0; image <= images; image += 1) {
+          moteur.horloge.definirEtat(image / fps, image, image > 0 ? 1 / fps : 0);
+          moteur.rendre();
+        }
+        const png = canevas.toDataURL('image/png');
+        return { png, erreursGl: erreursGl(moteur.gl) };
+      } catch (e) {
+        if (e instanceof ErreurCompilation) return { erreur: e.message, lignes: e.erreursLigne.map((l) => l.brut) };
+        return { erreur: e instanceof Error ? `${e.name} : ${e.message}` : String(e) };
+      }
+    };
+    // Compile seulement (sans rendre) : sert au contrôle de compilation de tout le catalogue (--compilation).
+    window.compilerShader = (shader) => {
+      try {
+        if (moteur === null) moteur = new MoteurRendu(canevas);
+        moteur.compiler(convertirShaderNormalise(parserShader(shader)));
+        return { ok: true };
+      } catch (e) {
+        if (e instanceof ErreurCompilation) return { ok: false, erreur: e.message.split('\n')[0], lignes: e.erreursLigne.slice(0, 3).map((l) => l.brut) };
+        return { ok: false, erreur: e instanceof Error ? `${e.name} : ${e.message}` : String(e) };
+      }
+    };
+    const attendre = (ms) => new Promise((resolu) => setTimeout(resolu, ms));
+    const base64 = (octets) => {
+      let texte = '';
+      for (let i = 0; i < octets.length; i += 0x8000) texte += String.fromCharCode(...octets.subarray(i, i + 0x8000));
+      return btoa(texte);
+    };
+
+    // Exporte un shader avec le vrai ExportVideo (écriture en flux + stockage temporaire OPFS si disponible), puis
+    // relit le fichier produit dans un <video> : métadonnées, durée, image au milieu non noire.
+    window.exporterTest = async (shader, { format = 'mp4', largeur = 320, hauteur = 180, fps = 30, duree = 1, bitrate = 1_000_000, annulerApres = null } = {}) => {
+      try {
+        if (moteur === null) moteur = new MoteurRendu(canevas);
+        const normalise = convertirShaderNormalise(parserShader(shader));
+        moteur.compiler(normalise);
+        moteur.definirTexturesMedia(medias(normalise));
+        moteur.redimensionner(largeur, hauteur);
+        moteur.reinitialiserTampons();
+        const exporteur = new ExportVideo({ format, largeur, hauteur, fps, duree, bitrate });
+        const support = await exporteur.support();
+        if (support[format].length === 0) return { ignore: `aucun codec ${format} pris en charge par ce navigateur` };
+        const morceaux = [];
+        let fermeture = 0;
+        let abandons = 0;
+        const destination = { write: async (donnees) => { morceaux.push(donnees.slice()); }, close: async () => { fermeture += 1; }, abort: async () => { abandons += 1; } };
+        const annulation = new AbortController();
+        let spoolActif = false;
+        const debut = performance.now();
+        const rendre = async ({ frame, iTime, iTimeDelta }) => {
+          if (annulerApres !== null && frame === annulerApres) annulation.abort();
+          if (annulation.signal.aborted) throw new DOMException('Export annulé.', 'AbortError');
+          moteur.horloge.definirEtat(iTime, frame, iTimeDelta);
+          moteur.rendre();
+          return moteur.canevas;
+        };
+        let picTas = 0;
+        const surProgres = () => { if (exporteur._spool !== null) spoolActif = true; picTas = Math.max(picTas, performance.memory?.usedJSHeapSize ?? 0); };
+        let resume = null;
+        let annule = false;
+        try {
+          resume = await exporteur.exporterVersDestination(rendre, destination, { onProgress: surProgres, signal: annulation.signal });
+        } catch (e) {
+          if (annulerApres !== null && e?.name === 'AbortError') annule = true; else throw e;
+        }
+        const racine = await navigator.storage.getDirectory();
+        let restesOpfs = 0;
+        for await (const _ of racine.values()) restesOpfs += 1;
+        const rapport = { picTasMo: Math.round(picTas / 1048576), annule, abandons, fermeture, spoolActif, restesOpfs, ms: Math.round(performance.now() - debut), opfsDisponible: typeof navigator.storage?.getDirectory === 'function' };
+        if (annule) return rapport;
+        const taille = morceaux.reduce((s, m) => s + m.length, 0);
+        const octets = new Uint8Array(taille);
+        let decalage = 0;
+        for (const m of morceaux) { octets.set(m, decalage); decalage += m.length; }
+        const video = document.createElement('video');
+        video.muted = true;
+        video.src = URL.createObjectURL(new Blob([octets], { type: format === 'mp4' ? 'video/mp4' : 'video/webm' }));
+        const lecture = await new Promise((resolu) => {
+          video.onloadedmetadata = () => resolu({ ok: true, duree: video.duration, largeur: video.videoWidth, hauteur: video.videoHeight });
+          video.onerror = () => resolu({ ok: false, code: video.error?.code ?? null, message: video.error?.message ?? '' });
+          setTimeout(() => resolu({ ok: false, message: 'délai de lecture des métadonnées dépassé' }), 8000);
+        });
+        if (lecture.ok) {
+          video.currentTime = Math.min(duree / 2, Math.max(0, video.duration - 0.05));
+          await new Promise((resolu) => { video.onseeked = resolu; setTimeout(resolu, 5000); });
+          const cible = document.createElement('canvas');
+          cible.width = 64; cible.height = 36;
+          const ctx = cible.getContext('2d');
+          ctx.drawImage(video, 0, 0, 64, 36);
+          const pixels = ctx.getImageData(0, 0, 64, 36).data;
+          let somme = 0;
+          for (let i = 0; i < pixels.length; i += 4) somme += pixels[i] + pixels[i + 1] + pixels[i + 2];
+          lecture.luminanceMoyenne = Math.round(somme / (pixels.length / 4) / 3);
+        }
+        return { ...rapport, resume, taille, lecture, base64: base64(octets) };
+      } catch (e) {
+        return { erreur: e instanceof Error ? `${e.name} : ${e.message}` : String(e) };
+      }
+    };
+
+    // Synchronisation audio/vidéo d'un export réel : un flash blanc et un clic sonore sont placés à 0,5 s dans le shader et
+    // dans le tampon audio ; le fichier exporté est relu (image par image pour la vidéo, decodeAudioData pour le son) et
+    // l'écart entre les deux instants mesurés est rapporté.
+    window.syncAvTest = async ({ format = 'mp4', fps = 30, instant = 0.5, duree = 1.2 } = {}) => {
+      try {
+        if (moteur === null) moteur = new MoteurRendu(canevas);
+        const shader = { ver: '0.1', info: { id: 'SYNCAV', name: 'sync', username: 'x', tags: [] }, renderpass: [{ type: 'image', name: 'Image', inputs: [], outputs: [{ id: 'a', channel: 0 }],
+          code: `void mainImage(out vec4 c, in vec2 p) { c = vec4(vec3(step(${instant.toFixed(4)}, iTime)), 1.0); }` }] };
+        moteur.compiler(convertirShaderNormalise(parserShader(shader)));
+        moteur.redimensionner(160, 90);
+        const exporteur = new ExportVideo({ format, largeur: 160, hauteur: 90, fps, duree, bitrate: 500_000 });
+        const supportAudio = await exporteur.supportAudio();
+        const taux = 48000;
+        const audio = new AudioBuffer({ numberOfChannels: 2, sampleRate: taux, length: Math.round(taux * duree) });
+        const debutClic = Math.round(taux * instant);
+        for (let c = 0; c < 2; c += 1) {
+          const donnees = audio.getChannelData(c);
+          for (let i = 0; i < 480; i += 1) donnees[debutClic + i] = Math.sin(i * 0.5) * 0.9;
+        }
+        const morceaux = [];
+        const destination = { write: async (d) => { morceaux.push(d.slice()); }, close: async () => {}, abort: async () => {} };
+        const rendre = async ({ frame, iTime, iTimeDelta }) => { moteur.horloge.definirEtat(iTime, frame, iTimeDelta); moteur.rendre(); return moteur.canevas; };
+        await exporteur.exporterVersDestination(rendre, destination, { renderAudio: async () => audio });
+        const octets = new Uint8Array(morceaux.reduce((s, m) => s + m.length, 0));
+        let decalage = 0;
+        for (const m of morceaux) { octets.set(m, decalage); decalage += m.length; }
+        // Son : premier échantillon dont l'amplitude dépasse 0,2 dans le fichier décodé.
+        const contexte = new AudioContext({ sampleRate: taux });
+        const decode = await contexte.decodeAudioData(octets.buffer.slice(0));
+        const canal = decode.getChannelData(0);
+        let indexSon = -1;
+        for (let i = 0; i < canal.length; i += 1) if (Math.abs(canal[i]) > 0.2) { indexSon = i; break; }
+        // Image : premier instant, au pas d'une image, dont l'image relue est blanche.
+        const video = document.createElement('video');
+        video.muted = true;
+        video.src = URL.createObjectURL(new Blob([octets], { type: format === 'mp4' ? 'video/mp4' : 'video/webm' }));
+        await new Promise((resolu, rejeter) => { video.onloadedmetadata = resolu; video.onerror = () => rejeter(new Error('relecture vidéo impossible')); });
+        const cible = document.createElement('canvas');
+        cible.width = 16; cible.height = 9;
+        const ctx = cible.getContext('2d');
+        let instantVideo = null;
+        for (let image = 0; image < Math.round(duree * fps); image += 1) {
+          const t = (image + 0.5) / fps;
+          video.currentTime = t;
+          await new Promise((resolu) => { video.onseeked = resolu; setTimeout(resolu, 3000); });
+          ctx.drawImage(video, 0, 0, 16, 9);
+          if (ctx.getImageData(8, 4, 1, 1).data[0] > 128) { instantVideo = image / fps; break; }
+        }
+        return { format, audioCodecs: supportAudio, instantAttendu: instant, instantVideo, instantSon: indexSon >= 0 ? indexSon / taux : null,
+          ecartMs: instantVideo !== null && indexSon >= 0 ? Math.round((indexSon / taux - instantVideo) * 1000) : null, dureeAudio: decode.duration, dureeVideo: video.duration };
+      } catch (e) {
+        return { erreur: e instanceof Error ? `${e.name} : ${e.message}` : String(e) };
+      }
+    };
+
+    // Perd puis restaure le contexte WebGL au milieu d'un rendu à rétroaction : le moteur doit tout recompiler et le
+    // rendu suivant doit être identique à celui d'avant la perte (même suite d'images depuis zéro).
+    window.perteContexteTest = async (shader, { temps = 1, fps = 30 } = {}) => {
+      try {
+        if (moteur === null) moteur = new MoteurRendu(canevas);
+        const rendreTout = () => {
+          moteur.reinitialiserTampons();
+          for (let image = 0; image <= Math.round(temps * fps); image += 1) {
+            moteur.horloge.definirEtat(image / fps, image, image > 0 ? 1 / fps : 0);
+            moteur.rendre();
+          }
+          return canevas.toDataURL('image/png');
+        };
+        moteur.compiler(convertirShaderNormalise(parserShader(shader)));
+        const avant = rendreTout();
+        const extension = moteur.gl.getExtension('WEBGL_lose_context');
+        if (extension === null) return { ignore: 'WEBGL_lose_context indisponible' };
+        const perdu = new Promise((resolu) => canevas.addEventListener('webglcontextlost', resolu, { once: true }));
+        const restaure = new Promise((resolu) => canevas.addEventListener('webglcontextrestored', resolu, { once: true }));
+        extension.loseContext();
+        if (await Promise.race([perdu.then(() => true), attendre(5000).then(() => false)]) === false) return { erreur: 'événement webglcontextlost non reçu en 5 s' };
+        // Laisser l'événement finir d'être distribué : la restauration n'est possible qu'une fois preventDefault constaté.
+        await attendre(200);
+        const renduPendantPerte = (() => { try { moteur.rendre(); return null; } catch (e) { return String(e); } })();
+        extension.restoreContext();
+        if (await Promise.race([restaure.then(() => true), attendre(8000).then(() => false)]) === false) return { erreur: 'événement webglcontextrestored non reçu en 8 s' };
+        await attendre(100);
+        const apres = rendreTout();
+        return { identique: avant === apres, renduPendantPerte, erreursGl: erreursGl(moteur.gl) };
+      } catch (e) {
+        return { erreur: e instanceof Error ? `${e.name} : ${e.message}` : String(e) };
+      }
+    };
+    window.banc = 'pret';
+  </script>
+</body>
+</html>

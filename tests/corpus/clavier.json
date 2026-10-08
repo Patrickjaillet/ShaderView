@@ -1,0 +1,41 @@
+{
+  "ver": "0.1",
+  "info": {
+    "id": "CLAVIE",
+    "name": "Clavier",
+    "username": "ShaderView",
+    "description": "Texture clavier 256 × 3 lue en texelFetch (aucune touche).",
+    "tags": [
+      "corpus",
+      "regression"
+    ],
+    "license": "GPL-3.0-or-later"
+  },
+  "renderpass": [
+    {
+      "type": "image",
+      "name": "Image",
+      "code": "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec2 uv = fragCoord / iResolution.xy;\n  int touche = int(uv.x * 255.0);\n  float etat = texelFetch(iChannel0, ivec2(touche, 0), 0).x;\n  float appui = texelFetch(iChannel0, ivec2(touche, 1), 0).x;\n  float bascule = texelFetch(iChannel0, ivec2(touche, 2), 0).x;\n  fragColor = vec4(vec3(etat, appui, bascule) + 0.15 * uv.y, 1.0);\n}",
+      "inputs": [
+        {
+          "channel": 0,
+          "ctype": "keyboard",
+          "src": "/presets/tex00.jpg",
+          "sampler": {
+            "filter": "linear",
+            "wrap": "clamp",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "id": "4dfGRr",
+          "channel": 0
+        }
+      ]
+    }
+  ]
+}

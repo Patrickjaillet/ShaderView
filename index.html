@@ -20,6 +20,7 @@
 <body>
   <header class="entete">
     <h1 class="entete__titre">ShaderView</h1>
+    <button type="button" id="btn-diagnostic" class="bouton entete__diagnostic" data-i18n="diag.open">Diagnostic</button>
     <button type="button" id="btn-langue" class="bouton entete__langue" data-i18n-title="language.label" aria-label="Changer la langue" data-i18n-aria-label="language.label" aria-pressed="false">EN</button>
   </header>
 
@@ -104,6 +105,14 @@
           <p id="detail-meta" class="detail__meta"></p>
         </div>
         <p id="detail-alerte" class="detail__alerte" hidden></p>
+        <div id="detail-lenteur" class="detail__alerte detail__lenteur" role="alert" hidden>
+          <span id="detail-lenteur-texte"></span>
+          <button type="button" id="btn-lenteur" class="bouton" data-i18n="slow.pause">Suspendre</button>
+        </div>
+        <details id="detail-compat" class="detail__compat" hidden>
+          <summary data-i18n="compat.title">Compatibilité Shadertoy</summary>
+          <ul id="detail-compat-liste"></ul>
+        </details>
         <div id="detail-son" class="detail__son" hidden>
           <button type="button" id="btn-son" class="bouton" aria-pressed="false" data-i18n="sound.play">Lire le son</button>
           <span id="detail-son-etat" class="detail__son-etat" role="status"></span>
@@ -151,6 +160,24 @@
       <p class="catalogue__aide" data-i18n="catalog.help">Sans manifeste, ouvrez le dossier <code>shaders/</code> ou déposez ici vos fichiers <code>.json</code>.</p>
     </aside>
   </main>
+
+  <dialog id="dialogue-diagnostic" class="dialogue-export" aria-labelledby="diagnostic-titre">
+    <div class="export-formulaire">
+      <div class="export-formulaire__entete">
+        <h2 id="diagnostic-titre" data-i18n="diag.title">Diagnostic</h2>
+        <button type="button" id="diagnostic-fermer" class="bouton" aria-label="Fermer" data-i18n-aria-label="common.close">×</button>
+      </div>
+      <p class="diagnostic__aide" data-i18n="diag.help">Informations techniques à joindre à un signalement. Rien n’est envoyé : copiez le texte vous-même.</p>
+      <textarea id="diagnostic-texte" class="champ diagnostic__texte" readonly rows="16" aria-label="Texte du diagnostic" data-i18n-aria-label="diag.textLabel"></textarea>
+      <div class="export-formulaire__actions">
+        <span id="diagnostic-etat" class="diagnostic__etat" role="status"></span>
+        <span>
+          <button type="button" id="diagnostic-vider" class="bouton" data-i18n="diag.clearLog">Vider le journal</button>
+          <button type="button" id="diagnostic-copier" class="bouton" data-i18n="diag.copy">Copier</button>
+        </span>
+      </div>
+    </div>
+  </dialog>
 
   <div id="depot" class="depot" data-i18n="catalog.drop" hidden>Déposez un dossier ou des fichiers .json</div>
   <script type="module" src="js/app.js"></script>

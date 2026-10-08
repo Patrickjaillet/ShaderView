@@ -26,14 +26,15 @@ import {
   selectionnerJson,
 } from './catalog.js';
 import { ErreurParseur, parserShader } from './parser.js';
-import { ErreurCompilation, ErreurContexte, MoteurRendu, TAILLE_FACE_CUBEMAP, convertirGles1VersGles3, convertirShaderNormalise } from './renderer.js';
-import { decoderImage, genererMediaSubstitue, resoudreNomMedia, typeMimeVideo } from './media.js';
+import { ErreurCompilation, ErreurContexte, MoteurRendu, SuiviLenteur, TAILLE_FACE_CUBEMAP, analyserCompatibilite, convertirGles1VersGles3, convertirShaderNormalise } from './renderer.js';
+import { decoderImage, decoderVolume, genererMediaSubstitue, genererVolumeSubstitue, resoudreNomMedia, typeMimeVideo } from './media.js';
 import { CANAUX_AVEC_MEDIA } from './shader-meta.js';
 import { LecteurAudio, TAILLE_FFT, construireTextureVisualiseur, rendreSonHorsLigne, synchroniserHorlogeAvecAudio } from './audio.js';
 import { Inspecteur, elementsDepuisDocument } from './inspector.js';
 import { GenerateurMiniatures } from './thumbnails.js';
 import { ExportVideo, FORMAT_EXPORT, nomFichierExport as fabriquerNomFichierExport } from './export/video.js';
 import { definirLangue, initialiserLangue, langue, traduire } from './i18n.js';
+import { JournalErreurs, SEUIL_AVERTISSEMENT_TELECHARGEMENT, VERSION_APPLICATION, construireDiagnostic, estimerTailleExport, installerCaptureErreurs } from './diagnostic.js';
 
 const CLES_SOURCE = {
   [SOURCES.MANIFESTE]: 'catalog.source.manifest',
@@ -65,6 +66,8 @@ const etat = {
   videosSelection: [],
   // Pour les statistiques de performance (FPS lissé sur quelques images, voir mettreAJourStatsPerf).
   dernieresDurees: [],
+  suiviLenteur: new SuiviLenteur(),
+  journalErreurs: new JournalErreurs(),
   normaliseActive: null,
   entreeSelectionnee: null,
   exportEnCours: false,
@@ -98,6 +101,8 @@ const el = {};
 function demarrerMoteur() {
   try {
     etat.moteur = new MoteurRendu(el.viewport);
+    // iChannelTime d'un canal musical : position de lecture du lecteur audio associé (0 tant qu'il n'existe pas).
+    etat.moteur.tempsMedia = (src) => etat.visualiseursMusique.get(src)?.lecteur.position ?? null;
   } catch (e) {
     // WebGL2 indisponible : le viewport reste noir, la sélection affiche l'erreur
     // (voir afficherErreurRendu), mais le reste de l'interface (catalogue, détail) fonctionne.
@@ -177,7 +182,12 @@ function mettreAJourStatsPerf(deltaSecondes) {
   etat.dernieresDurees.push(deltaSecondes);
   if (etat.dernieresDurees.length > 30) etat.dernieresDurees.shift();
   const moyenne = etat.dernieresDurees.reduce((s, d) => s + d, 0) / etat.dernieresDurees.length;
-  etat.inspecteur.afficherStatsPerf({ fps: moyenne > 0 ? 1 / moyenne : 0, resolutionsBuffers: resolutionsBuffers(etat.normaliseActive) });
+  const fps = moyenne > 0 ? 1 / moyenne : 0;
+  etat.inspecteur.afficherStatsPerf({ fps, resolutionsBuffers: resolutionsBuffers(etat.normaliseActive) });
+  // Seule une fenêtre de mesure pleine et une horloge en marche comptent (un rendu ponctuel en pause n'est pas une lenteur).
+  if (etat.dernieresDurees.length >= 30 && etat.moteur.horloge.enMarche && etat.suiviLenteur.observer(fps)) {
+    etat.inspecteur.afficherLenteur(fps, () => { etat.moteur.horloge.pause(); mettreAJourTransport(); });
+  }
 }
 
 function mettreAJourTransport() {
@@ -418,11 +428,19 @@ function rendreSelection(shader) {
     throw e;
   }
   etat.inspecteur.afficherPasses(normalise);
+  const rapportCompatibilite = { ...analyserCompatibilite(normalise), precisionBasse: !etat.moteur.extensions.precisionHauteFragment };
+  etat.inspecteur.afficherCompatibilite(rapportCompatibilite);
+  etat.inspecteur.masquerLenteur();
+  etat.suiviLenteur.reinitialiser();
+  etat.dernieresDurees = [];
   try {
     etat.moteur.compiler(convertirShaderNormalise(normalise));
     etat.moteur.reinitialiserTampons();
+    // Canaux dont l'entrée manque dans le JSON et dont l'échantillonneur a été déduit du code pendant la compilation.
+    if (etat.moteur.inferences.length > 0) etat.inspecteur.afficherCompatibilite({ ...rapportCompatibilite, inferences: etat.moteur.inferences });
   } catch (e) {
     if (e instanceof ErreurCompilation) {
+      etat.journalErreurs.ajouter('shader', `${e.idPasse ?? 'image'} : ${e.erreursLigne.map((l) => l.brut).slice(0, 3).join(' | ') || e.message}`);
       etat.inspecteur.afficherJournalCompilation(e.idPasse ?? 'image', e.erreursLigne);
       etat.inspecteur.afficherAlerte(e.erreursLigne.length > 0 ? traduire('catalog.compileError') : e.message);
       etat.normaliseActive = null;
@@ -739,17 +757,26 @@ async function resoudreTextureMedia(entree, catalogue, jeton) {
       const canevas = new OffscreenCanvas(image.width, image.height);
       canevas.getContext('2d').drawImage(image, 0, 0);
       const octets = canevas.getContext('2d').getImageData(0, 0, image.width, image.height).data;
-      return { octets: new Uint8Array(octets), largeur: image.width, hauteur: image.height, cubemap: entree.type === 'cubemap' };
+      return { octets: new Uint8Array(octets), largeur: image.width, hauteur: image.height, cubemap: entree.type === 'cubemap', srgb: entree.echantillonnage.srgb };
     } catch {
       // Fichier présent mais illisible/non décodable (format non géré, par exemple) :
       // substitution procédurale, comme si le fichier était absent.
     }
   }
+  if (entree.type === 'volume') {
+    if (nom !== null) {
+      try {
+        return decoderVolume(await catalogue.contenuMedia(nom));
+      } catch {
+        // Fichier .bin illisible ou d'un format inconnu : volume procédural, comme si le fichier était absent.
+      }
+    }
+    return genererVolumeSubstitue(entree.src ?? 'volume');
+  }
   if (entree.type === 'music' || entree.type === 'musicstream') {
     if (await preparerVisualiseurMusique(entree, catalogue)) return null;
   }
-  // `nom !== null` mais type « volume »/« video », ou music/musicstream non décodable :
-  // pas encore de format local défini (volume) ou de lecture continue (vidéo).
+  // Vidéo absente ou non décodable, ou music/musicstream non décodable : substitution procédurale 2D.
   const octets = genererMediaSubstitue(entree.type, entree.src ?? entree.type, taille, taille);
   return { octets, largeur: taille, hauteur: taille, cubemap: entree.type === 'cubemap' };
 }
@@ -1138,6 +1165,86 @@ async function actualiserCodecsAudioExport() {
   }
 }
 
+/**
+ * Rassemble les informations techniques du diagnostic (navigateur, GPU, capacités, shader courant, journal d'erreurs).
+ * Aucune n'est envoyée : le texte est seulement affiché pour que l'utilisateur le copie.
+ * @returns {Promise<import('./diagnostic.js').InfosDiagnostic>}
+ */
+async function collecterDiagnostic() {
+  const gl = etat.moteur?.gl ?? null;
+  let webgl = null;
+  if (gl !== null) {
+    const infoGpu = gl.getExtension('WEBGL_debug_renderer_info');
+    webgl = {
+      rendu: gl.getParameter(infoGpu ? infoGpu.UNMASKED_RENDERER_WEBGL : gl.RENDERER),
+      fabricant: gl.getParameter(infoGpu ? infoGpu.UNMASKED_VENDOR_WEBGL : gl.VENDOR),
+      version: gl.getParameter(gl.VERSION),
+      tailleTextureMax: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+      taille3dMax: gl.getParameter(gl.MAX_3D_TEXTURE_SIZE),
+      precisionHaute: etat.moteur.extensions.precisionHauteFragment,
+      extensions: {
+        EXT_color_buffer_float: etat.moteur.extensions.flottantsRenderables,
+        OES_texture_float_linear: etat.moteur.extensions.filtrageLineaireFlottant,
+        EXT_disjoint_timer_query_webgl2: gl.getSupportedExtensions()?.includes('EXT_disjoint_timer_query_webgl2') ?? false,
+      },
+    };
+  }
+  const codecs = await new ExportVideo().support();
+  const entree = etat.entreeSelectionnee;
+  return {
+    version: VERSION_APPLICATION,
+    langue: langue(),
+    date: new Date().toISOString(),
+    navigateur: {
+      userAgent: navigator.userAgent,
+      plateforme: navigator.platform,
+      langues: (navigator.languages ?? [navigator.language]).join(', '),
+      coeurs: navigator.hardwareConcurrency,
+      memoireGo: navigator.deviceMemory,
+    },
+    webgl,
+    capacites: {
+      videoEncoder: typeof globalThis.VideoEncoder === 'function',
+      audioEncoder: typeof globalThis.AudioEncoder === 'function',
+      opfs: typeof navigator.storage?.getDirectory === 'function',
+      selecteurFichier: typeof globalThis.showSaveFilePicker === 'function',
+      audioContext: typeof globalThis.AudioContext === 'function',
+      webm: codecs.webm,
+      mp4: codecs.mp4,
+    },
+    shader: entree === null || entree === undefined ? null : {
+      fichier: entree.fichier,
+      titre: entree.titre,
+      alerte: document.getElementById('detail-alerte')?.hidden === false ? document.getElementById('detail-alerte').textContent : null,
+      inferences: etat.moteur?.inferences ?? [],
+    },
+    erreurs: etat.journalErreurs.entrees,
+  };
+}
+
+async function actualiserDiagnostic() {
+  el.diagnosticTexte.value = construireDiagnostic(await collecterDiagnostic());
+}
+
+async function ouvrirDiagnostic() {
+  el.diagnosticEtat.textContent = '';
+  el.dialogueDiagnostic.showModal();
+  await actualiserDiagnostic();
+  el.diagnosticTexte.focus();
+  el.diagnosticTexte.select();
+}
+
+async function copierDiagnostic() {
+  el.diagnosticTexte.select();
+  try {
+    await navigator.clipboard.writeText(el.diagnosticTexte.value);
+    el.diagnosticEtat.textContent = traduire('diag.copied');
+  } catch {
+    // Presse-papiers refusé ou indisponible (contexte non sécurisé) : ancienne commande, sinon sélection manuelle.
+    el.diagnosticEtat.textContent = traduire(document.execCommand?.('copy') ? 'diag.copied' : 'diag.copyFailed');
+  }
+}
+
 async function ouvrirDialogueExport() {
   if (etat.normaliseActive === null || etat.moteur === null || etat.exportEnCours) return;
   el.exportEtat.textContent = traduire('export.checking');
@@ -1186,6 +1293,11 @@ async function lancerExport(evenement) {
   const bitrate = Number(el.exportBitrateVideo.value) * 1000;
   const bitrateAudio = Number(el.exportBitrateAudio.value) * 1000;
   const format = el.exportFormat.value;
+  // Sans écriture directe dans un fichier, le résultat est gardé entièrement en mémoire avant le téléchargement.
+  if (typeof globalThis.showSaveFilePicker !== 'function') {
+    const octets = estimerTailleExport({ bitrate, bitrateAudio, duree, audio: el.exportAudio.checked });
+    if (octets > SEUIL_AVERTISSEMENT_TELECHARGEMENT && !window.confirm(traduire('export.largeDownload', { size: Math.round(octets / 1048576) }))) return;
+  }
   const exporteur = new ExportVideo({
     format,
     largeur,
@@ -1379,7 +1491,15 @@ function brancherDepot() {
 // ---------------------------------------------------------------------------
 
 function demarrer() {
+  installerCaptureErreurs(etat.journalErreurs, window);
   initialiserLangue();
+  el.dialogueDiagnostic = document.getElementById('dialogue-diagnostic');
+  el.diagnosticTexte = document.getElementById('diagnostic-texte');
+  el.diagnosticEtat = document.getElementById('diagnostic-etat');
+  document.getElementById('btn-diagnostic').addEventListener('click', ouvrirDiagnostic);
+  document.getElementById('diagnostic-fermer').addEventListener('click', () => el.dialogueDiagnostic.close());
+  document.getElementById('diagnostic-copier').addEventListener('click', copierDiagnostic);
+  document.getElementById('diagnostic-vider').addEventListener('click', () => { etat.journalErreurs.vider(); void actualiserDiagnostic(); });
   el.scene = document.querySelector('.scene');
   el.viewport = document.getElementById('viewport');
   el.depot = document.getElementById('depot');

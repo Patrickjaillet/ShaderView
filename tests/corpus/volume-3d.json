@@ -1,0 +1,41 @@
+{
+  "ver": "0.1",
+  "info": {
+    "id": "VOLUME",
+    "name": "Volume 3D",
+    "username": "ShaderView",
+    "description": "Échantillonneur sampler3D, profondeur dans iChannelResolution.z.",
+    "tags": [
+      "corpus",
+      "regression"
+    ],
+    "license": "GPL-3.0-or-later"
+  },
+  "renderpass": [
+    {
+      "type": "image",
+      "name": "Image",
+      "code": "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec2 uv = fragCoord / iResolution.xy;\n  vec3 p = vec3(uv * 2.0, iTime * 0.1);\n  vec3 col = texture(iChannel0, p).rgb;\n  col = mix(col, vec3(iChannelResolution[0].z / 64.0), step(0.95, uv.y));\n  fragColor = vec4(col, 1.0);\n}",
+      "inputs": [
+        {
+          "channel": 0,
+          "ctype": "volume",
+          "src": "/media/a/volume-bruit.bin",
+          "sampler": {
+            "filter": "linear",
+            "wrap": "repeat",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "id": "4dfGRr",
+          "channel": 0
+        }
+      ]
+    }
+  ]
+}

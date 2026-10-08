@@ -1,0 +1,44 @@
+{
+  "fichiers": [
+    {
+      "fichier": "Bump_Grid.json",
+      "temps": 1,
+      "fps": 10
+    },
+    {
+      "fichier": "Divers_003.json",
+      "temps": 1,
+      "fps": 10
+    },
+    {
+      "fichier": "Divers_054.json",
+      "temps": 1,
+      "fps": 10
+    },
+    {
+      "fichier": "Electric_Dr_Who_Waves.json",
+      "temps": 1,
+      "fps": 30
+    },
+    {
+      "fichier": "Sablier.json",
+      "temps": 1,
+      "fps": 30
+    },
+    {
+      "fichier": "Tunnel_324.json",
+      "temps": 1,
+      "fps": 10
+    },
+    {
+      "fichier": "Raymarching_190.json",
+      "temps": 1,
+      "fps": 5
+    },
+    {
+      "fichier": "Hyper_Espace.json",
+      "temps": 1,
+      "fps": 10
+    }
+  ]
+}

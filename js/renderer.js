@@ -57,22 +57,21 @@ export class ErreurContexte extends Error {
 // Wrapper GLSL ES 3.00 : en-tête Shadertoy et point d'entrée
 // ---------------------------------------------------------------------------
 
-// Types de canal dont l'entrée Shadertoy correspondante est un échantillonneur
-// cubemap (`samplerCube`) plutôt qu'une texture 2D (`sampler2D`).
-const TYPES_CANAL_CUBEMAP = Object.freeze(new Set(['cubemap']));
+// Types de canal dont l'entrée Shadertoy n'est pas une texture 2D (`sampler2D`) :
+// un cubemap se lit par `samplerCube`, un volume par `sampler3D`.
+const ECHANTILLONNEUR_PAR_TYPE_CANAL = Object.freeze({ cubemap: 'samplerCube', volume: 'sampler3D' });
 
 /**
  * Déclare les uniforms standard Shadertoy, avec le type d'échantillonneur de chaque
- * canal (`sampler2D` par défaut, `samplerCube` pour une entrée de type « cubemap » —
- * seul type dont l'échantillonneur diffère ; `volume` utilisera `sampler3D` à partir
- * de la Phase 5, non couvert ici car aucune entrée de ce type n'est encore liée).
+ * canal (`sampler2D` par défaut, `samplerCube` pour une entrée de type « cubemap »,
+ * `sampler3D` pour une entrée de type « volume »).
  * @param {('texture'|'cubemap'|'volume'|'buffer'|'keyboard'|'mic'|'music'|'musicstream'|'webcam'|'video'|'misc')[]} typesCanaux
  *        type de canal pour iChannel0 à 3 (longueur 4, valeur quelconque pour un canal inutilisé)
  * @returns {string}
  */
 export function construireDeclarationUniforms(typesCanaux = ['texture', 'texture', 'texture', 'texture']) {
   const lignesCanaux = typesCanaux
-    .map((type, n) => `uniform ${TYPES_CANAL_CUBEMAP.has(type) ? 'samplerCube' : 'sampler2D'} iChannel${n};`)
+    .map((type, n) => `uniform ${ECHANTILLONNEUR_PAR_TYPE_CANAL[type] ?? 'sampler2D'} iChannel${n};`)
     .join('\n');
   return [
     'uniform vec3 iResolution;',
@@ -141,6 +140,9 @@ export function construireFragmentShader(code, commun, { cubemap = false, son = 
     'precision highp int;',
     'precision highp sampler2D;',
     'precision highp samplerCube;',
+    'precision highp sampler3D;',
+    // Macro définie par Shadertoy : 1 sur un matériel de bureau, 0 sur un appareil peu puissant. ShaderView la fixe à 1.
+    '#define HW_PERFORMANCE 1',
     'out vec4 shaderview_sortieFragment;',
     typesCanaux !== undefined ? construireDeclarationUniforms(typesCanaux) : DECLARATION_UNIFORMS,
     cubemap ? 'uniform vec3 shaderview_rayOrigine;\nuniform mat3 shaderview_repereFace;' : '',
@@ -212,6 +214,21 @@ const REMPLACEMENTS_QUALIFICATEURS = Object.freeze([
   [/\bvarying\b/g, 'in'],
 ]);
 
+// Déclarations `uniform` des uniforms standard par le code utilisateur (shaders exportés d'autres moteurs) :
+// l'en-tête les déclare déjà, une seconde déclaration serait une erreur de redéfinition. Retirées (la ligne
+// reste vide, pour que les numéros de ligne restent exacts).
+const DECLARATION_UNIFORM_STANDARD = /^[ \t]*uniform[ \t]+(?:(?:highp|mediump|lowp)[ \t]+)?\w+[ \t]+(iResolution|iTime|iTimeDelta|iFrame|iFrameRate|iMouse|iDate|iSampleRate|iChannelTime|iChannelResolution|iChannel[0-3])(?:[ \t]*\[[^\]]*\])?[ \t]*;[ \t]*/gm;
+
+// Nom lisible de l'ancien identifiant visé par un motif de remplacement (« texture2D »
+// pour /\btexture2D\s*\(/ ; « varying » pour /\bvarying\b/), pour le rapport de compatibilité.
+function nomRemplace(motif) {
+  return motif.source.replace(/^\\b/, '').replace(/\\s\*\\\($/, '').replace(/\\b$/, '');
+}
+
+function retirerCommentaires(code) {
+  return code.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, '');
+}
+
 /**
  * Convertit un code GLSL ES 1.00 historique (shaders Shadertoy anciens) vers une
  * forme compatible GLSL ES 3.00 : fonctions de texturage renommées (`texture2D` →
@@ -226,7 +243,7 @@ export function convertirGles1VersGles3(code) {
   let resultat = code;
   for (const [motif, remplacement] of REMPLACEMENTS_GLES1) resultat = resultat.replace(motif, remplacement);
   for (const [motif, remplacement] of REMPLACEMENTS_QUALIFICATEURS) resultat = resultat.replace(motif, remplacement);
-  return resultat;
+  return resultat.replace(DECLARATION_UNIFORM_STANDARD, '');
 }
 
 function convertirPasse(passe) {
@@ -254,6 +271,44 @@ export function convertirShaderNormalise(normalise) {
     cubemaps,
     image: convertirPasse(normalise.image),
   };
+}
+
+/**
+ * @typedef {object} RapportCompatibilite
+ * @property {{ passe: string, de: string, vers: string, occurrences: number }[]} conversions
+ *           adaptations GLSL ES 1.00 → 3.00 réellement appliquées au code (commentaires exclus)
+ * @property {{ code: 'mainVR', passe: string }[]} avertissements fonctions Shadertoy sans équivalent ici
+ */
+
+/**
+ * Établit le rapport de compatibilité d'un shader normalisé **avant** conversion : quelles
+ * adaptations convertirGles1VersGles3 va appliquer (par passe, avec le nombre d'occurrences),
+ * et quelles fonctions Shadertoy sont ignorées — `mainVR` (réalité virtuelle) est compilé
+ * mais jamais appelé : seul `mainImage` produit l'image affichée. Les occurrences situées
+ * dans des commentaires ne comptent pas.
+ * @param {import('./parser.js').ShaderNormalise} normalise
+ * @returns {RapportCompatibilite}
+ */
+export function analyserCompatibilite(normalise) {
+  const passes = [];
+  if (normalise.commun !== null) passes.push(['common', normalise.commun]);
+  for (const lettre of Object.keys(normalise.buffers).sort()) passes.push([`buffer-${lettre}`, normalise.buffers[lettre]]);
+  for (const nom of Object.keys(normalise.cubemaps)) passes.push([`cubemap-${nom}`, normalise.cubemaps[nom]]);
+  passes.push(['image', normalise.image]);
+  const conversions = [];
+  const avertissements = [];
+  for (const [idPasse, passe] of passes) {
+    const code = retirerCommentaires(passe.code);
+    for (const [motif, remplacement] of [...REMPLACEMENTS_GLES1, ...REMPLACEMENTS_QUALIFICATEURS]) {
+      const occurrences = (code.match(motif) ?? []).length;
+      if (occurrences > 0) conversions.push({ passe: idPasse, de: nomRemplace(motif), vers: remplacement.replace(/\($/, ''), occurrences });
+    }
+    for (const declaration of code.matchAll(DECLARATION_UNIFORM_STANDARD)) {
+      conversions.push({ passe: idPasse, de: `uniform ${declaration[1]}`, vers: 'déclaration retirée (déjà fournie)', occurrences: 1 });
+    }
+    if (/\bvoid\s+mainVR\s*\(/.test(code)) avertissements.push({ code: 'mainVR', passe: idPasse });
+  }
+  return { conversions, avertissements };
 }
 
 // ---------------------------------------------------------------------------
@@ -413,6 +468,41 @@ export class Horloge {
     this._temps = temps;
     this._image = Math.floor(image);
     this._deltaTemps = deltaTemps;
+  }
+}
+
+/**
+ * Détecte un shader trop lent pour l'interface : après `imagesConsecutives` mesures consécutives sous
+ * `seuilFps`, `observer` renvoie vrai **une seule fois** (jusqu'à `reinitialiser`), pour proposer à
+ * l'utilisateur de suspendre le rendu. Une mesure rapide remet le compteur à zéro : un à-coup isolé
+ * (compilation, changement d'onglet) ne déclenche rien.
+ */
+export class SuiviLenteur {
+  /**
+   * @param {number} [seuilFps] cadence en dessous de laquelle une mesure est dite lente
+   * @param {number} [imagesConsecutives] nombre de mesures lentes consécutives avant l'alerte
+   */
+  constructor(seuilFps = 12, imagesConsecutives = 90) {
+    this.seuilFps = seuilFps;
+    this.imagesConsecutives = imagesConsecutives;
+    this.reinitialiser();
+  }
+
+  reinitialiser() {
+    this._lentes = 0;
+    this._signale = false;
+  }
+
+  /**
+   * @param {number} fps cadence lissée mesurée (0 ou non fini : mesure ignorée)
+   * @returns {boolean} vrai au moment où l'alerte doit être affichée
+   */
+  observer(fps) {
+    if (!Number.isFinite(fps) || fps <= 0) return false;
+    this._lentes = fps < this.seuilFps ? this._lentes + 1 : 0;
+    if (this._signale || this._lentes < this.imagesConsecutives) return false;
+    this._signale = true;
+    return true;
   }
 }
 
@@ -584,6 +674,8 @@ export function calculerUniforms(resolution, horloge, souris, { frequenceEchanti
  * @typedef {object} ExtensionsDisponibles
  * @property {boolean} flottantsRenderables `EXT_color_buffer_float` : textures RGBA32F utilisables comme cibles de rendu (buffers Phase 4)
  * @property {boolean} filtrageLineaireFlottant `OES_texture_float_linear` : filtrage linéaire des textures flottantes
+ * @property {boolean} precisionHauteFragment les `float` des fragment shaders ont au moins 23 bits de mantisse (`highp` complet) ;
+ *           WebGL2 l'impose, la valeur ne sert qu'à signaler un pilote hors spécification
  */
 
 /**
@@ -597,7 +689,29 @@ export function detecterExtensions(gl) {
   return {
     flottantsRenderables: gl.getExtension('EXT_color_buffer_float') !== null,
     filtrageLineaireFlottant: gl.getExtension('OES_texture_float_linear') !== null,
+    precisionHauteFragment: (gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT)?.precision ?? 0) >= 23,
   };
+}
+
+/**
+ * Le filtrage linéaire est-il possible sur les cibles de rendu flottantes ? Les buffers
+ * sont en RGBA32F quand `EXT_color_buffer_float` est présente (filtrage linéaire alors
+ * conditionné par `OES_texture_float_linear`), sinon en RGBA16F, toujours filtrable.
+ * @param {ExtensionsDisponibles} extensions
+ * @returns {boolean}
+ */
+export function filtrageLineaireCiblesPossible(extensions) {
+  return !extensions.flottantsRenderables || extensions.filtrageLineaireFlottant;
+}
+
+/**
+ * Peut-on générer une chaîne de mipmaps sur les cibles de rendu flottantes ? Exige un format
+ * à la fois rendable et filtrable (`generateMipmap`), donc les deux extensions.
+ * @param {ExtensionsDisponibles} extensions
+ * @returns {boolean}
+ */
+export function mipmapsCiblesPossibles(extensions) {
+  return extensions.flottantsRenderables && extensions.filtrageLineaireFlottant;
 }
 
 /**
@@ -663,18 +777,35 @@ function choisirFormatFlottant(gl, extensions) {
     : { interne: gl.RGBA16F, type: gl.HALF_FLOAT };
 }
 
-function appliquerEchantillonnage(gl, cible, echantillonnage, extensions) {
-  const filtreMinMag = {
-    nearest: gl.NEAREST,
-    linear: extensions.filtrageLineaireFlottant ? gl.LINEAR : gl.NEAREST,
-    mipmap: extensions.filtrageLineaireFlottant ? gl.LINEAR_MIPMAP_LINEAR : gl.NEAREST,
-  }[echantillonnage.filtre];
+/**
+ * Filtres de minification et d'agrandissement à appliquer pour l'échantillonnage demandé.
+ * Une texture 8 bits (image, volume local) se filtre toujours ; une cible de rendu
+ * flottante (buffer, cubemap rendu) ne se filtre ou ne se mipmappe que si le matériel
+ * le permet (voir filtrageLineaireCiblesPossible, mipmapsCiblesPossibles), avec repli
+ * progressif mipmap → linéaire → plus proche voisin.
+ * @param {{ NEAREST: number, LINEAR: number, LINEAR_MIPMAP_LINEAR: number }} gl constantes WebGL
+ * @param {import('./parser.js').Echantillonnage} echantillonnage
+ * @param {ExtensionsDisponibles} extensions
+ * @param {boolean} cibleFlottante vrai pour un buffer ou un cubemap rendu, faux pour une texture de média
+ * @returns {{ min: number, mag: number }}
+ */
+export function choisirFiltres(gl, echantillonnage, extensions, cibleFlottante) {
+  const lineaire = !cibleFlottante || filtrageLineaireCiblesPossible(extensions);
+  const mipmap = !cibleFlottante || mipmapsCiblesPossibles(extensions);
+  const filtreLineaire = lineaire ? gl.LINEAR : gl.NEAREST;
+  if (echantillonnage.filtre === 'nearest') return { min: gl.NEAREST, mag: gl.NEAREST };
+  if (echantillonnage.filtre === 'mipmap') return { min: mipmap ? gl.LINEAR_MIPMAP_LINEAR : filtreLineaire, mag: filtreLineaire };
+  return { min: filtreLineaire, mag: filtreLineaire };
+}
+
+function appliquerEchantillonnage(gl, cible, echantillonnage, extensions, cibleFlottante = true) {
+  const { min, mag } = choisirFiltres(gl, echantillonnage, extensions, cibleFlottante);
   const repetition = echantillonnage.repetition === 'repeat' ? gl.REPEAT : gl.CLAMP_TO_EDGE;
-  gl.texParameteri(cible, gl.TEXTURE_MIN_FILTER, filtreMinMag);
-  gl.texParameteri(cible, gl.TEXTURE_MAG_FILTER, echantillonnage.filtre === 'nearest' ? gl.NEAREST : (extensions.filtrageLineaireFlottant ? gl.LINEAR : gl.NEAREST));
+  gl.texParameteri(cible, gl.TEXTURE_MIN_FILTER, min);
+  gl.texParameteri(cible, gl.TEXTURE_MAG_FILTER, mag);
   gl.texParameteri(cible, gl.TEXTURE_WRAP_S, repetition);
   gl.texParameteri(cible, gl.TEXTURE_WRAP_T, repetition);
-  if (cible === gl.TEXTURE_CUBE_MAP) gl.texParameteri(cible, gl.TEXTURE_WRAP_R, repetition);
+  if (cible === gl.TEXTURE_CUBE_MAP || cible === gl.TEXTURE_3D) gl.texParameteri(cible, gl.TEXTURE_WRAP_R, repetition);
 }
 
 /**
@@ -690,14 +821,38 @@ export class Tampon {
    * @param {number} largeur
    * @param {number} hauteur
    * @param {ExtensionsDisponibles} extensions
+   * @param {{ mipmaps?: boolean }} [options] `mipmaps` : une passe lit ce buffer en filtre « mipmap » ; la chaîne de
+   *        mipmaps est alors régénérée après chaque rendu (si le matériel le permet, voir mipmapsCiblesPossibles)
    */
-  constructor(gl, largeur, hauteur, extensions) {
+  constructor(gl, largeur, hauteur, extensions, { mipmaps = false } = {}) {
     this.gl = gl;
     this.largeur = largeur;
     this.hauteur = hauteur;
     this.extensions = extensions;
+    this.mipmaps = mipmaps && mipmapsCiblesPossibles(extensions);
     this._paires = [this._creerPaire(), this._creerPaire()];
     this._indexAvant = 0;
+    this._genererMipmapsDeToutes();
+  }
+
+  _genererMipmapsDeToutes() {
+    if (!this.mipmaps) return;
+    const { gl } = this;
+    for (const { texture } of this._paires) {
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.generateMipmap(gl.TEXTURE_2D);
+    }
+  }
+
+  /**
+   * Régénère les mipmaps de la texture qui vient d'être écrite (celle de `arriere()`) ; à appeler
+   * après le rendu et avant `permuter()`. Sans effet si ce buffer n'est pas lu en filtre « mipmap ».
+   */
+  genererMipmaps() {
+    if (!this.mipmaps) return;
+    const { gl } = this;
+    gl.bindTexture(gl.TEXTURE_2D, this._paires[1 - this._indexAvant].texture);
+    gl.generateMipmap(gl.TEXTURE_2D);
   }
 
   _creerPaire() {
@@ -737,6 +892,7 @@ export class Tampon {
       gl.clear(gl.COLOR_BUFFER_BIT);
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    this._genererMipmapsDeToutes();
   }
 
   /** Libère les deux textures et tampons de cadre. */
@@ -760,10 +916,12 @@ export class TamponCubemap {
    * @param {WebGL2RenderingContext} gl
    * @param {number} taille longueur du côté de chaque face, en pixels
    * @param {ExtensionsDisponibles} extensions
+   * @param {{ mipmaps?: boolean }} [options] voir Tampon
    */
-  constructor(gl, taille, extensions) {
+  constructor(gl, taille, extensions, { mipmaps = false } = {}) {
     this.gl = gl;
     this.taille = taille;
+    this.mipmaps = mipmaps && mipmapsCiblesPossibles(extensions);
     this.texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, this.texture);
     const { interne, type } = choisirFormatFlottant(gl, extensions);
@@ -778,6 +936,15 @@ export class TamponCubemap {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       return tamponCadre;
     });
+    this.genererMipmaps();
+  }
+
+  /** Régénère les mipmaps des six faces ; à appeler après le rendu de la dernière face. Sans effet hors filtre « mipmap ». */
+  genererMipmaps() {
+    if (!this.mipmaps) return;
+    const { gl } = this;
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, this.texture);
+    gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
   }
 
   /** Tampon de cadre à écrire pour une face donnée (0 à 5, ordre de FACES_CUBEMAP). */
@@ -833,6 +1000,28 @@ export function creerTexturePlaceholder(gl) {
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  return texture;
+}
+
+/** Repli 1 × 1 × 1 (noir opaque) d'un canal `volume` dont le média n'est pas encore prêt (échantillonneur `sampler3D`). */
+export function creerTexturePlaceholder3D(gl) {
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_3D, texture);
+  gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, 1, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  return texture;
+}
+
+/** Repli 1 × 1 par face (noir opaque) d'un canal `cubemap` dont le média n'est pas encore prêt (échantillonneur `samplerCube`). */
+export function creerTexturePlaceholderCube(gl) {
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
+  for (let face = 0; face < 6; face += 1) {
+    gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+  }
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   return texture;
 }
 
@@ -905,6 +1094,13 @@ export function compilerPasse(gl, code, commun, options = {}) {
 
   const emplacements = {};
   for (const nom of NOMS_UNIFORMS) emplacements[nom] = gl.getUniformLocation(programme, nom);
+  // Chaque échantillonneur iChannelN lit l'unité de texture N (celle que lierCanal active). Sans cette affectation,
+  // tous les canaux liraient l'unité 0, valeur par défaut d'un uniform d'échantillonneur.
+  gl.useProgram(programme);
+  for (let canal = 0; canal < 4; canal += 1) {
+    const emplacement = emplacements[`iChannel${canal}`];
+    if (emplacement !== null) gl.uniform1i(emplacement, canal);
+  }
   return { programme, emplacements, decalageLignes };
 }
 
@@ -928,25 +1124,27 @@ export function envoyerUniforms(gl, emplacements, valeurs) {
 }
 
 /**
- * Envoie `iChannelResolution[]` (largeur, hauteur, 1 par canal — 0 pour un canal
- * inutilisé) et `iChannelTime[]` (toujours `iTime`, comme Shadertoy pour tout canal
- * autre que vidéo, qui n'est pas encore résolue — Phase 5) pour la passe courante.
+ * Envoie `iChannelResolution[]` (largeur, hauteur, profondeur par canal — profondeur 1
+ * hors volume, 0 pour un canal inutilisé) et `iChannelTime[]` pour la passe courante.
  * @param {WebGL2RenderingContext} gl
  * @param {Record<string, WebGLUniformLocation|null>} emplacements
- * @param {{ largeur: number, hauteur: number }[]} resolutionsCanaux longueur 4 ; { largeur: 0, hauteur: 0 } pour un canal inutilisé
- * @param {number} tempsCourant valeur à répéter dans iChannelTime[]
+ * @param {{ largeur: number, hauteur: number, profondeur?: number }[]} resolutionsCanaux longueur 4 ; { largeur: 0, hauteur: 0 } pour un canal inutilisé
+ * @param {number|number[]} tempsCanaux temps de chaque canal (tableau de 4) ; un nombre est répété sur les quatre canaux
  */
-export function envoyerUniformsCanaux(gl, emplacements, resolutionsCanaux, tempsCourant) {
+export function envoyerUniformsCanaux(gl, emplacements, resolutionsCanaux, tempsCanaux) {
   if (emplacements.iChannelResolution !== null) {
     const valeurs = new Float32Array(12);
     for (let i = 0; i < 4; i += 1) {
       valeurs[i * 3] = resolutionsCanaux[i]?.largeur ?? 0;
       valeurs[i * 3 + 1] = resolutionsCanaux[i]?.hauteur ?? 0;
-      valeurs[i * 3 + 2] = 1;
+      valeurs[i * 3 + 2] = resolutionsCanaux[i]?.profondeur ?? 1;
     }
     gl.uniform3fv(emplacements.iChannelResolution, valeurs);
   }
-  if (emplacements.iChannelTime !== null) gl.uniform1fv(emplacements.iChannelTime, new Float32Array(4).fill(tempsCourant));
+  if (emplacements.iChannelTime !== null) {
+    const temps = Array.isArray(tempsCanaux) ? Float32Array.from({ length: 4 }, (_, i) => tempsCanaux[i] ?? 0) : new Float32Array(4).fill(tempsCanaux);
+    gl.uniform1fv(emplacements.iChannelTime, temps);
+  }
 }
 
 /**
@@ -981,15 +1179,16 @@ export function dessinerQuad(gl) {
  * @param {WebGL2RenderingContext} gl
  * @param {number} canal 0 à 3
  * @param {WebGLTexture} texture
- * @param {boolean} estCubemap
+ * @param {boolean|'2d'|'cube'|'3d'} genre dimension de la texture (`true` équivaut à `'cube'`, `false` à `'2d'`)
  * @param {import('./parser.js').Echantillonnage} echantillonnage
  * @param {ExtensionsDisponibles} extensions
+ * @param {boolean} [cibleFlottante] vrai pour un buffer ou un cubemap rendu (voir choisirFiltres), faux pour un média
  */
-export function lierCanal(gl, canal, texture, estCubemap, echantillonnage, extensions) {
-  const cible = estCubemap ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D;
+export function lierCanal(gl, canal, texture, genre, echantillonnage, extensions, cibleFlottante = true) {
+  const cible = (genre === true || genre === 'cube') ? gl.TEXTURE_CUBE_MAP : (genre === '3d' ? gl.TEXTURE_3D : gl.TEXTURE_2D);
   gl.activeTexture(gl.TEXTURE0 + canal);
   gl.bindTexture(cible, texture);
-  appliquerEchantillonnage(gl, cible, echantillonnage, extensions);
+  appliquerEchantillonnage(gl, cible, echantillonnage, extensions, cibleFlottante);
 }
 
 /**
@@ -1017,6 +1216,8 @@ export function matriceRepereFace(face) {
 export const TAILLE_FACE_CUBEMAP = 256;
 // Origine de la caméra cubemap : centre du cube, convention Shadertoy (rayOri = 0).
 const ORIGINE_CUBEMAP = Object.freeze([0, 0, 0]);
+// La texture clavier se lit toujours au plus proche voisin (une touche = un texel, sans interpolation).
+const ECHANTILLONNAGE_CLAVIER = Object.freeze({ ...ECHANTILLONNAGE_PAR_DEFAUT, filtre: 'nearest' });
 
 /**
  * Détermine, pour chaque canal (0 à 3) d'une passe normalisée, la source à lier au
@@ -1054,6 +1255,62 @@ export function typesCanauxDe(passe) {
   const types = ['texture', 'texture', 'texture', 'texture'];
   for (const entree of passe.entrees) types[entree.canal] = entree.type;
   return types;
+}
+
+/**
+ * Canaux « libres » (sans entrée dans le JSON) dont le nom figure sur une ligne en erreur du code utilisateur.
+ * Quand un export Shadertoy a perdu ses `inputs`, le code lit pourtant `iChannel1` comme un cubemap ou un volume :
+ * ces lignes indiquent quels canaux changer de type d'échantillonneur.
+ * @param {string} code code utilisateur de la passe
+ * @param {ErreurLigne[]} erreursLigne
+ * @param {Set<number>} canauxLibres
+ * @returns {number[]}
+ */
+export function canauxMentionnes(code, erreursLigne, canauxLibres) {
+  const lignes = code.split('\n');
+  const trouves = new Set();
+  for (const { ligne } of erreursLigne) {
+    if (ligne === null) continue;
+    for (const m of (lignes[ligne - 1] ?? '').matchAll(/\biChannel([0-3])\b/g)) {
+      if (canauxLibres.has(Number(m[1]))) trouves.add(Number(m[1]));
+    }
+  }
+  return [...trouves];
+}
+
+/**
+ * Cherche un type d'échantillonneur (`texture` = 2D, `cubemap`, `volume` = 3D) pour chaque canal libre qui fasse
+ * compiler la passe, à partir des lignes en erreur : exploration en profondeur bornée, le cubemap étant essayé
+ * avant le volume. Une passe qui compile du premier coup n'est jamais explorée.
+ * @param {(types: string[]) => { ok: true, valeur: any } | { ok: false, erreur: ErreurCompilation }} essayer compile avec ces types de canaux
+ * @param {string[]} typesInitiaux types déclarés (longueur 4)
+ * @param {Set<number>} canauxLibres canaux sans entrée dans le JSON
+ * @param {string} code code utilisateur de la passe (pour lire les lignes en erreur)
+ * @param {{ budget?: number }} [options] nombre maximal de compilations
+ * @returns {{ ok: true, valeur: any, types: string[] } | { ok: false, erreur: ErreurCompilation }}
+ */
+export function rechercherTypesCanaux(essayer, typesInitiaux, canauxLibres, code, { budget = 24 } = {}) {
+  const vus = new Set();
+  const pile = [typesInitiaux];
+  let premiereErreur = null;
+  let restant = budget;
+  while (pile.length > 0 && restant > 0) {
+    const types = pile.pop();
+    const cle = types.join(',');
+    if (vus.has(cle)) continue;
+    vus.add(cle);
+    restant -= 1;
+    const essai = essayer(types);
+    if (essai.ok) return { ok: true, valeur: essai.valeur, types };
+    premiereErreur ??= essai.erreur;
+    // Pile : le dernier empilé est essayé en premier, donc « cubemap » en dernier ici.
+    for (const canal of canauxMentionnes(code, essai.erreur.erreursLigne, canauxLibres)) {
+      for (const type of ['texture', 'volume', 'cubemap']) {
+        if (type !== types[canal]) pile.push(types.map((t, i) => (i === canal ? type : t)));
+      }
+    }
+  }
+  return { ok: false, erreur: premiereErreur };
 }
 
 /**
@@ -1127,7 +1384,12 @@ export class MoteurRendu {
     this._tamponsCubemaps = {};
     this._textureClavier = creerTextureClavier(this.gl);
     this._texturePlaceholder = creerTexturePlaceholder(this.gl);
-    this._texturesMedia = new Map(); // src → { texture: WebGLTexture, largeur, hauteur[, video, retournementVertical] }
+    this._texturePlaceholder3D = creerTexturePlaceholder3D(this.gl);
+    this._texturePlaceholderCube = creerTexturePlaceholderCube(this.gl);
+    this._buffersMipmap = new Set(); // lettres des buffers lus en filtre « mipmap » par au moins une passe
+    this._cubemapsMipmap = new Set(); // idem pour les passes cubemap
+    this.tempsMedia = null; // (src) => secondes|null : position d'un média audio (music/musicstream), fournie par l'application
+    this._texturesMedia = new Map(); // src → { texture, largeur, hauteur[, profondeur, volume, flottant][, video, retournementVertical] }
     this._videosConnues = new Map(); // src → { video, retournementVertical } : recréées après une perte de contexte
     this._arreterSurveillance = surveillerPerteContexte(
       canevas,
@@ -1137,6 +1399,8 @@ export class MoteurRendu {
         this.extensions = detecterExtensions(this.gl);
         this._textureClavier = creerTextureClavier(this.gl);
         this._texturePlaceholder = creerTexturePlaceholder(this.gl);
+        this._texturePlaceholder3D = creerTexturePlaceholder3D(this.gl);
+        this._texturePlaceholderCube = creerTexturePlaceholderCube(this.gl);
         // Les textures de médias doivent être redonnées par l'appelant (definirTexturesMedia) :
         // leurs octets décodés ne sont pas conservés par ce moteur après le premier envoi au GPU.
         this._texturesMedia = new Map();
@@ -1179,30 +1443,72 @@ export class MoteurRendu {
         suivant.set(src, this._creerTextureVideo(media.video, retournementVertical));
         continue;
       }
-      const { octets, largeur, hauteur, cubemap = false } = media;
       if (existante?.video !== undefined) this._videosConnues.delete(src);
-      // Réutilise la texture existante si ses dimensions n'ont pas changé (ex. une
+      if (media.profondeur !== undefined) {
+        suivant.set(src, this._definirVolume(existante, media));
+        continue;
+      }
+      const { octets, largeur, hauteur, cubemap = false, srgb = false } = media;
+      const cible = cubemap ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D;
+      // Entrée marquée `srgb` dans le JSON : texels stockés en sRGB, convertis en linéaire à l'échantillonnage (comme Shadertoy).
+      const interne = srgb ? gl.SRGB8_ALPHA8 : gl.RGBA;
+      // Réutilise la texture existante si sa nature et ses dimensions n'ont pas changé (ex. une
       // substitution procédurale régénérée à l'identique) ; sinon la (re)crée.
-      if (existante !== undefined && existante.video === undefined && existante.largeur === largeur && existante.hauteur === hauteur) {
-        gl.bindTexture(cubemap ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D, existante.texture);
+      if (existante !== undefined && existante.video === undefined && !existante.volume && existante.cubemap === cubemap
+        && existante.srgb === srgb && existante.largeur === largeur && existante.hauteur === hauteur) {
+        gl.bindTexture(cible, existante.texture);
         if (cubemap) for (let face = 0; face < 6; face += 1) gl.texSubImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, 0, 0, largeur, hauteur, gl.RGBA, gl.UNSIGNED_BYTE, octets);
         else gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, largeur, hauteur, gl.RGBA, gl.UNSIGNED_BYTE, octets);
+        gl.generateMipmap(cible);
         suivant.set(src, existante);
         continue;
       }
       if (existante !== undefined) gl.deleteTexture(existante.texture);
       const texture = gl.createTexture();
-      const cible = cubemap ? gl.TEXTURE_CUBE_MAP : gl.TEXTURE_2D;
       gl.bindTexture(cible, texture);
-      if (cubemap) for (let face = 0; face < 6; face += 1) gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, gl.RGBA, largeur, hauteur, 0, gl.RGBA, gl.UNSIGNED_BYTE, octets);
-      else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, largeur, hauteur, 0, gl.RGBA, gl.UNSIGNED_BYTE, octets);
-      if (!cubemap) gl.generateMipmap(gl.TEXTURE_2D);
-      suivant.set(src, { texture, largeur, hauteur });
+      if (cubemap) for (let face = 0; face < 6; face += 1) gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, interne, largeur, hauteur, 0, gl.RGBA, gl.UNSIGNED_BYTE, octets);
+      else gl.texImage2D(gl.TEXTURE_2D, 0, interne, largeur, hauteur, 0, gl.RGBA, gl.UNSIGNED_BYTE, octets);
+      // Chaîne de mipmaps pour les filtres « mipmap » (cubemap compris, sinon la texture serait incomplète donc noire).
+      gl.generateMipmap(cible);
+      suivant.set(src, { texture, largeur, hauteur, cubemap, srgb });
     }
     if (!fusionner) {
       for (const [src, { texture }] of this._texturesMedia) if (!suivant.has(src)) gl.deleteTexture(texture);
     }
     this._texturesMedia = suivant;
+  }
+
+  /**
+   * Crée ou met à jour la texture 3D d'un canal `volume` (voir decoderVolume dans media.js pour le format des données).
+   * @param {{ texture: WebGLTexture, volume?: boolean, largeur: number, hauteur: number, profondeur?: number, canaux?: number, flottant?: boolean }|undefined} existante
+   * @param {{ octets: ArrayBufferView, largeur: number, hauteur: number, profondeur: number, canaux: 1|2|4, flottant?: boolean }} media
+   */
+  _definirVolume(existante, media) {
+    const { gl } = this;
+    const { octets, largeur, hauteur, profondeur, canaux, flottant = false } = media;
+    const formats = {
+      1: flottant ? [gl.R32F, gl.RED, gl.FLOAT] : [gl.R8, gl.RED, gl.UNSIGNED_BYTE],
+      2: flottant ? [gl.RG32F, gl.RG, gl.FLOAT] : [gl.RG8, gl.RG, gl.UNSIGNED_BYTE],
+      4: flottant ? [gl.RGBA32F, gl.RGBA, gl.FLOAT] : [gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE],
+    };
+    const [interne, format, type] = formats[canaux];
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    let texture;
+    if (existante?.volume && existante.largeur === largeur && existante.hauteur === hauteur && existante.profondeur === profondeur
+      && existante.canaux === canaux && existante.flottant === flottant) {
+      texture = existante.texture;
+      gl.bindTexture(gl.TEXTURE_3D, texture);
+      gl.texSubImage3D(gl.TEXTURE_3D, 0, 0, 0, 0, largeur, hauteur, profondeur, format, type, octets);
+    } else {
+      if (existante !== undefined) gl.deleteTexture(existante.texture);
+      texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_3D, texture);
+      gl.texImage3D(gl.TEXTURE_3D, 0, interne, largeur, hauteur, profondeur, 0, format, type, octets);
+    }
+    // Les mipmaps d'un volume 8 bits sont toujours générés (filtre « mipmap ») ; un volume flottant 32 bits n'en a pas.
+    if (!flottant) gl.generateMipmap(gl.TEXTURE_3D);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    return { texture, largeur, hauteur, profondeur, canaux, flottant, volume: true };
   }
 
   _creerTextureVideo(video, retournementVertical) {
@@ -1291,13 +1597,22 @@ export class MoteurRendu {
     const { gl } = this;
     const commun = normalise.commun !== null ? normalise.commun.code : null;
 
+    const inferences = [];
     const compilerAvecId = (idPasse, passe, options) => {
-      try {
-        return compilerPasse(gl, passe.code, commun, options);
-      } catch (e) {
-        if (e instanceof ErreurCompilation) throw new ErreurCompilation(e.message, e.erreursLigne, idPasse);
-        throw e;
-      }
+      const libres = new Set([0, 1, 2, 3].filter((canal) => !passe.entrees.some((e) => e.canal === canal)));
+      const resultat = rechercherTypesCanaux((types) => {
+        try {
+          return { ok: true, valeur: compilerPasse(gl, passe.code, commun, { ...options, typesCanaux: types }) };
+        } catch (e) {
+          if (e instanceof ErreurCompilation) return { ok: false, erreur: e };
+          throw e;
+        }
+      }, options.typesCanaux, libres, passe.code);
+      if (!resultat.ok) throw new ErreurCompilation(resultat.erreur.message, resultat.erreur.erreursLigne, idPasse);
+      resultat.types.forEach((type, canal) => {
+        if (libres.has(canal) && type !== options.typesCanaux[canal]) inferences.push({ passe: idPasse, canal, type });
+      });
+      return { ...resultat.valeur, typesCanaux: resultat.types };
     };
 
     const programmesBuffers = {};
@@ -1318,15 +1633,40 @@ export class MoteurRendu {
     this._programmesCubemaps = programmesCubemaps;
     this._programmeImage = programmeImage;
     this._normalise = normalise;
+    /** Canaux sans entrée dans le JSON dont le type d'échantillonneur a été déduit du code : `{ passe, canal, type }[]`. */
+    this.inferences = inferences;
     this._recreerTampons();
+  }
+
+  /**
+   * Détermine quels buffers et cubemaps rendus sont lus en filtre « mipmap » par au moins une passe : seuls ceux-là
+   * voient leur chaîne de mipmaps régénérée après chaque rendu (sinon la texture lue serait incomplète, donc noire).
+   */
+  _analyserMipmaps() {
+    this._buffersMipmap = new Set();
+    this._cubemapsMipmap = new Set();
+    const n = this._normalise;
+    const passes = [...Object.values(n.buffers), ...Object.values(n.cubemaps), n.image];
+    for (const passe of passes) {
+      for (const source of resoudreSourcesCanaux(passe, n)) {
+        if (source === 'aucune' || source === 'keyboard' || source.echantillonnage?.filtre !== 'mipmap') continue;
+        if (source.genre === 'buffer') this._buffersMipmap.add(source.lettre);
+        else if (source.genre === 'cubemap') this._cubemapsMipmap.add(source.nom);
+      }
+    }
   }
 
   _recreerTampons() {
     this._libererTampons();
     const { gl, extensions } = this;
     const { width: largeur, height: hauteur } = this.canevas;
-    for (const lettre of Object.keys(this._programmesBuffers)) this._tampons[lettre] = new Tampon(gl, largeur, hauteur, extensions);
-    for (const nom of Object.keys(this._programmesCubemaps)) this._tamponsCubemaps[nom] = new TamponCubemap(gl, TAILLE_FACE_CUBEMAP, extensions);
+    this._analyserMipmaps();
+    for (const lettre of Object.keys(this._programmesBuffers)) {
+      this._tampons[lettre] = new Tampon(gl, largeur, hauteur, extensions, { mipmaps: this._buffersMipmap.has(lettre) });
+    }
+    for (const nom of Object.keys(this._programmesCubemaps)) {
+      this._tamponsCubemaps[nom] = new TamponCubemap(gl, TAILLE_FACE_CUBEMAP, extensions, { mipmaps: this._cubemapsMipmap.has(nom) });
+    }
   }
 
   /**
@@ -1360,21 +1700,54 @@ export class MoteurRendu {
     if (source.genre === 'buffer') return { largeur: this.canevas.width, hauteur: this.canevas.height };
     if (source.genre === 'cubemap') return { largeur: TAILLE_FACE_CUBEMAP, hauteur: TAILLE_FACE_CUBEMAP };
     const texture = this._texturesMedia.get(source.src);
-    return texture !== undefined ? { largeur: texture.largeur, hauteur: texture.hauteur } : { largeur: 0, hauteur: 0 };
+    if (texture === undefined) return { largeur: 0, hauteur: 0 };
+    return { largeur: texture.largeur, hauteur: texture.hauteur, profondeur: texture.profondeur ?? 1 };
   }
 
-  _lierCanaux(sources) {
+  /**
+   * `iChannelTime[]` d'une passe, comme Shadertoy : la position de lecture (secondes) d'un canal vidéo ou audio
+   * (music, musicstream), 0 pour tout autre canal. La position audio est fournie par l'application (`tempsMedia`).
+   */
+  _tempsCanaux(sources) {
+    return sources.map((source) => {
+      if (source === 'aucune' || source === 'keyboard' || source.genre !== 'media') return 0;
+      if (source.type === 'video') return this._texturesMedia.get(source.src)?.video?.currentTime ?? 0;
+      if (source.type === 'music' || source.type === 'musicstream') return this.tempsMedia?.(source.src) ?? 0;
+      return 0;
+    });
+  }
+
+  _lierCanaux(sources, compilation) {
     const { gl } = this;
     for (let canal = 0; canal < 4; canal += 1) {
       const source = sources[canal];
-      if (source === 'aucune') continue;
-      if (source === 'keyboard') { lierCanal(gl, canal, this._textureClavier, false, ECHANTILLONNAGE_PAR_DEFAUT, this.extensions); continue; }
-      if (source.genre === 'buffer') { lierCanal(gl, canal, this._tampons[source.lettre].avant(), false, source.echantillonnage, this.extensions); continue; }
-      if (source.genre === 'cubemap') { lierCanal(gl, canal, this._tamponsCubemaps[source.nom].texture, true, source.echantillonnage, this.extensions); continue; }
+      if (source === 'aucune') {
+        // Canal sans entrée dans le JSON : un repli noir du type d'échantillonneur déclaré (déduit du code si besoin),
+        // pour qu'un shader qui le lit voie du noir plutôt que la texture restée liée à cette unité par une autre passe.
+        const type = compilation.typesCanaux?.[canal];
+        if (type === 'cubemap') lierCanal(gl, canal, this._texturePlaceholderCube, 'cube', ECHANTILLONNAGE_CLAVIER, this.extensions, false);
+        else if (type === 'volume') lierCanal(gl, canal, this._texturePlaceholder3D, '3d', ECHANTILLONNAGE_CLAVIER, this.extensions, false);
+        else lierCanal(gl, canal, this._texturePlaceholder, '2d', ECHANTILLONNAGE_CLAVIER, this.extensions, false);
+        continue;
+      }
+      if (source === 'keyboard') { lierCanal(gl, canal, this._textureClavier, '2d', ECHANTILLONNAGE_CLAVIER, this.extensions, false); continue; }
+      if (source.genre === 'buffer') { lierCanal(gl, canal, this._tampons[source.lettre].avant(), '2d', source.echantillonnage, this.extensions); continue; }
+      if (source.genre === 'cubemap') { lierCanal(gl, canal, this._tamponsCubemaps[source.nom].texture, 'cube', source.echantillonnage, this.extensions); continue; }
       // genre === 'media' : texture fournie par définirTexturesMedia, sinon repli (voir creerTexturePlaceholder).
+      // Le genre de la texture liée suit le type du canal (l'échantillonneur déclaré en dépend) : un volume
+      // ou un cubemap encore absent reçoit un repli de même dimension, jamais la texture 2D.
       const texture = this._texturesMedia.get(source.src);
-      const estCube = source.type === 'cubemap';
-      lierCanal(gl, canal, texture !== undefined ? texture.texture : this._texturePlaceholder, texture !== undefined && estCube, source.echantillonnage, this.extensions);
+      if (source.type === 'volume') {
+        // Un volume flottant 32 bits ne se filtre qu'avec OES_texture_float_linear et n'a pas de mipmaps générés ici.
+        const flottant = texture?.flottant === true;
+        const echantillonnage = flottant && source.echantillonnage.filtre === 'mipmap' ? { ...source.echantillonnage, filtre: 'linear' } : source.echantillonnage;
+        const extensions = flottant ? { ...this.extensions, flottantsRenderables: true } : this.extensions;
+        lierCanal(gl, canal, texture?.volume ? texture.texture : this._texturePlaceholder3D, '3d', echantillonnage, extensions, flottant);
+      } else if (source.type === 'cubemap') {
+        lierCanal(gl, canal, texture !== undefined ? texture.texture : this._texturePlaceholderCube, 'cube', source.echantillonnage, this.extensions, false);
+      } else {
+        lierCanal(gl, canal, texture !== undefined ? texture.texture : this._texturePlaceholder, '2d', source.echantillonnage, this.extensions, false);
+      }
     }
   }
 
@@ -1390,9 +1763,9 @@ export class MoteurRendu {
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
     gl.viewport(0, 0, largeur, hauteur);
     gl.useProgram(compilation.programme);
-    this._lierCanaux(sources);
+    this._lierCanaux(sources, compilation);
     envoyerUniforms(gl, compilation.emplacements, valeursGlobales);
-    envoyerUniformsCanaux(gl, compilation.emplacements, sources.map((s) => this._resolutionCanal(s)), valeursGlobales.iTime);
+    envoyerUniformsCanaux(gl, compilation.emplacements, sources.map((s) => this._resolutionCanal(s)), this._tempsCanaux(sources));
     dessinerQuad(gl);
   }
 
@@ -1403,7 +1776,9 @@ export class MoteurRendu {
    * « image » dans le canevas. Sans compilation réussie au préalable, ne dessine rien.
    */
   rendre() {
-    if (this._normalise === null) return;
+    // Pas de rendu tant que le contexte est perdu ou que les programmes n'ont pas été recréés après restauration :
+    // une exception ici interromprait la boucle d'animation de l'application, qui ne repartirait pas.
+    if (this._normalise === null || this._programmeImage === null || this.gl.isContextLost()) return;
     const { gl } = this;
     mettreAJourTextureClavier(gl, this._textureClavier, this.clavier.octets);
     this.clavier.consommerAppuis();
@@ -1414,6 +1789,7 @@ export class MoteurRendu {
     for (const lettre of this._normalise.ordreBuffers) {
       const tampon = this._tampons[lettre];
       this._rendrePassePleinEcran(this._programmesBuffers[lettre], this._normalise.buffers[lettre], tampon.arriere(), tampon.largeur, tampon.hauteur, valeursGlobales);
+      if (this._buffersMipmap.has(lettre)) tampon.genererMipmaps();
       tampon.permuter();
     }
 
@@ -1425,12 +1801,13 @@ export class MoteurRendu {
         gl.bindFramebuffer(gl.FRAMEBUFFER, tampon.tamponCadre(face));
         gl.viewport(0, 0, tampon.taille, tampon.taille);
         gl.useProgram(compilation.programme);
-        this._lierCanaux(sources);
+        this._lierCanaux(sources, compilation);
         envoyerUniforms(gl, compilation.emplacements, { ...valeursGlobales, iResolution: [tampon.taille, tampon.taille, 1] });
-        envoyerUniformsCanaux(gl, compilation.emplacements, sources.map((s) => this._resolutionCanal(s)), valeursGlobales.iTime);
+        envoyerUniformsCanaux(gl, compilation.emplacements, sources.map((s) => this._resolutionCanal(s)), this._tempsCanaux(sources));
         envoyerUniformsFace(gl, compilation.emplacements, ORIGINE_CUBEMAP, matriceRepereFace(FACES_CUBEMAP[face]));
         dessinerQuad(gl);
       }
+      if (this._cubemapsMipmap.has(nom)) tampon.genererMipmaps();
     }
 
     this._rendrePassePleinEcran(this._programmeImage, this._normalise.image, null, this.canevas.width, this.canevas.height, valeursGlobales);
@@ -1444,6 +1821,8 @@ export class MoteurRendu {
     this._videosConnues = new Map();
     this.gl.deleteTexture(this._textureClavier);
     this.gl.deleteTexture(this._texturePlaceholder);
+    this.gl.deleteTexture(this._texturePlaceholder3D);
+    this.gl.deleteTexture(this._texturePlaceholderCube);
     this._normalise = null;
     this._arreterSurveillance();
   }

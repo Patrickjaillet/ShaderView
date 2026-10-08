@@ -11,9 +11,12 @@ export const FORMAT_EXPORT = Object.freeze({
   MP4: 'mp4',
 });
 
+// Codecs vidéo par format, par niveau croissant : le premier que le navigateur accepte pour la taille et la cadence
+// réellement demandées est retenu (_codecVideoPreferentiel), donc le niveau le plus bas suffisant. Un niveau trop bas
+// est refusé pour une grande image (H.264 Baseline 3.0 ne dépasse pas environ 720 × 576), d'où les niveaux supérieurs.
 export const CODECS_PAR_FORMAT = Object.freeze({
-  [FORMAT_EXPORT.WEBM]: ['vp09.00.10.08', 'av01.0.04M.08'],
-  [FORMAT_EXPORT.MP4]: ['avc1.42E01E'],
+  [FORMAT_EXPORT.WEBM]: ['vp09.00.10.08', 'vp09.00.31.08', 'vp09.00.41.08', 'vp09.00.51.08', 'av01.0.04M.08', 'av01.0.05M.08'],
+  [FORMAT_EXPORT.MP4]: ['avc1.42E01E', 'avc1.4D401F', 'avc1.640028', 'avc1.64002A', 'avc1.640032', 'avc1.640034'],
 });
 
 export const AUDIO_CODECS_PAR_FORMAT = Object.freeze({

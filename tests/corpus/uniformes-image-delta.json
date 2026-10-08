@@ -1,0 +1,28 @@
+{
+  "ver": "0.1",
+  "info": {
+    "id": "IMAGES",
+    "name": "Images et delta",
+    "username": "ShaderView",
+    "description": "iFrame, iTimeDelta, iFrameRate, iSampleRate.",
+    "tags": [
+      "corpus",
+      "regression"
+    ],
+    "license": "GPL-3.0-or-later"
+  },
+  "renderpass": [
+    {
+      "type": "image",
+      "name": "Image",
+      "code": "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec2 uv = fragCoord / iResolution.xy;\n  float f = float(iFrame) / 30.0;\n  vec3 col = vec3(step(uv.x, f) * step(0.85, uv.y));\n  col += vec3(step(uv.x, iTimeDelta * 15.0) * step(uv.y, 0.15), 0.0, 0.0);\n  col += vec3(0.0, step(uv.x, iFrameRate / 60.0) * step(0.4, uv.y) * step(uv.y, 0.55), 0.0);\n  col += vec3(0.0, 0.0, step(uv.x, iSampleRate / 88200.0) * step(0.6, uv.y) * step(uv.y, 0.75));\n  fragColor = vec4(col + 0.1, 1.0);\n}",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "4dfGRr",
+          "channel": 0
+        }
+      ]
+    }
+  ]
+}

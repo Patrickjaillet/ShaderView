@@ -179,7 +179,9 @@ export function construireFluxWebM({
   if (audioChunks.length > 0 && audioCodec !== 'opus') {
     throw new TypeError(`Codec audio WebM non pris en charge par le muxeur : ${audioCodec}.`);
   }
-  if (!['vp9', 'vp09.00.10.08', 'av1', 'av01.0.04M.08'].includes(videoCodec)) {
+  // VP9 (« vp9 » ou « vp09.… ») et AV1 (« av1 » ou « av01.… ») quel que soit le niveau : seule la famille choisit
+  // l'identifiant de piste Matroska, le niveau ne figure pas dans le fichier.
+  if (!/^(vp9|vp09\.\d\d\.\d\d\.\d\d|av1|av01\.\d\.\d\d[MH]\.\d\d)$/.test(String(videoCodec))) {
     throw new TypeError(`Codec vidéo WebM non pris en charge par le muxeur : ${videoCodec}.`);
   }
   const codecAv1 = videoCodec.startsWith('av01') || videoCodec === 'av1';

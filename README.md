@@ -49,11 +49,65 @@ node tools/check-headers.mjs            # vérifie les en-têtes de licence des 
 node tools/inline-favicon.mjs           # réinjecte branding/favicon.svg dans index.html
 node tools/audit-reseau.mjs             # vérifie l'absence de requête réseau et la CSP
 node tools/build.mjs                    # contrôle complet avant publication
+node tools/regression-visuelle.mjs      # rend le corpus dans Chromium/Edge sans écran et compare aux références
+node tools/regression-visuelle.mjs --compilation   # vérifie que tous les shaders de shaders/ compilent
 node --test "tests/*.test.mjs"          # lance les tests automatisés
 ```
 
 Les mêmes commandes sont disponibles via `npm run manifeste`, `en-tetes`, `favicon` et `npm test` (Node.js 20 ou plus récent ;
 aucune dépendance à installer).
+
+## Compatibilité Shadertoy
+
+ShaderView vise le comportement de Shadertoy.com ; ce qui suit précise ce qui est pris en charge et les écarts connus.
+
+- **Entrées** : textures 2D, cubemaps (statiques ou rendus), volumes 3D (`sampler3D`, fichiers `.bin` de `shaders/media/`),
+  buffers, clavier, vidéo locale, musique. Filtres `nearest`, `linear` et `mipmap`, répétition, `vflip` et `srgb` appliqués.
+- **GLSL** : GLSL ES 3.00 complet (`texelFetch`, `textureLod`, `textureGrad`, dérivées…) ; le code GLSL ES 1.00 historique est
+  converti (`texture2D` → `texture`…). Les conversions appliquées sont listées dans l'inspecteur, rubrique « Compatibilité ».
+- **Exports d'autres moteurs** : les `uniform` standard redéclarés par le code sont retirés ; si le JSON a perdu les `inputs`
+  d'un canal, son type (2D, cubemap ou volume) est déduit du code et le canal est lu en noir.
+- **Macro** `HW_PERFORMANCE` fixée à 1. **`mainVR`** (réalité virtuelle) est ignorée : seule `mainImage` est affichée.
+- **`iChannelTime`** : position de lecture d'un canal vidéo ou musique, 0 pour les autres canaux.
+- **Écarts connus** : médias Shadertoy distants non téléchargés (substituts procéduraux signalés) ; webcam et micro désactivés
+  par défaut ; le mois de `iDate.y` est numéroté de 1 à 12 (la numérotation de Shadertoy n'a pas pu être vérifiée hors-ligne).
+- **Shaders lents** : après quelques secondes sous 12 images par seconde, l'inspecteur propose de suspendre le rendu.
+
+### Régression visuelle
+
+`tests/corpus/` contient des shaders de test écrits pour ShaderView (uniformes, filtres, mipmaps, volumes, cubemaps, rétroaction,
+GLSL ES 1.00, `mainVR`…) et `tests/corpus/catalogue.json` désigne quelques shaders de `shaders/`. `tools/regression-visuelle.mjs`
+les rend à un instant fixe avec le vrai moteur et compare le résultat aux images de `tests/references/`. Ces références sont des
+rendus de ShaderView relus à l'œil : elles détectent une régression, elles ne prouvent pas l'identité avec Shadertoy.com.
+Options : `--enregistrer` (réécrire les références), `--filtre NOM`, `--navigateur CHEMIN` (ou variable `SHADERVIEW_NAVIGATEUR`),
+`--fichier F.json --rapport DOSSIER` (rendre un shader quelconque).
+
+## Compatibilité des navigateurs
+
+| Fonction | Chrome / Edge (bureau) | Firefox | Safari |
+| --- | --- | --- | --- |
+| Rendu WebGL2, multipasse, son Web Audio | vérifié (Edge 154) | à essayer | à essayer |
+| Export WebM (VP9, Opus) et MP4 (H.264, AAC) par WebCodecs | vérifié (Edge 154, jusqu'à 1920 × 1080 à 60 i/s) | selon la version : l'export affiche « codec absent » si WebCodecs manque | idem |
+| Écriture directe dans un fichier (`showSaveFilePicker`) | disponible | absente : téléchargement, fichier gardé en mémoire | absente : idem |
+| Stockage temporaire des paquets (OPFS) | vérifié, vidé après succès et annulation | selon la version | partiel : repli en mémoire |
+
+Seul Edge 154 a pu être essayé pendant le développement ; les autres colonnes viennent de la documentation publique et restent à
+confirmer. Les replis sont prévus dans le code : codec absent signalé avant l'export, stockage temporaire remplacé par la mémoire,
+avertissement avant un téléchargement de plus de 500 Mo.
+
+### Contrôles en navigateur réel
+
+Ces commandes exigent Chromium, Chrome ou Edge (sans écran) et complètent les tests Node :
+
+```sh
+node tools/regression-visuelle.mjs --export          # exports MP4 et WebM, annulation, stockage OPFS, relecture dans <video>
+node tools/regression-visuelle.mjs --export-long     # 1920 × 1080, 60 i/s, 10 s : durée, taille, pic de mémoire JavaScript
+node tools/regression-visuelle.mjs --sync-av         # écart audio/vidéo mesuré sur les fichiers exportés
+node tools/regression-visuelle.mjs --perte-contexte  # perte puis restauration du contexte WebGL
+```
+
+Le bouton « Diagnostic » de l'en-tête affiche un texte (navigateur, GPU, extensions WebGL, codecs, shader courant, erreurs
+d'exécution récentes) à copier dans un signalement ; rien n'est envoyé.
 
 ## Publication sur GitHub Pages
 

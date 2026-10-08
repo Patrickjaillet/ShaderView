@@ -1,0 +1,41 @@
+{
+  "ver": "0.1",
+  "info": {
+    "id": "TEXTUR",
+    "name": "textureLod",
+    "username": "ShaderView",
+    "description": "Niveaux de mipmap d’une texture 2D.",
+    "tags": [
+      "corpus",
+      "regression"
+    ],
+    "license": "GPL-3.0-or-later"
+  },
+  "renderpass": [
+    {
+      "type": "image",
+      "name": "Image",
+      "code": "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec2 uv = fragCoord / iResolution.xy;\n  float lod = floor(uv.x * 6.0);\n  fragColor = vec4(textureLod(iChannel0, uv * 2.0, lod).rgb, 1.0);\n}",
+      "inputs": [
+        {
+          "channel": 0,
+          "ctype": "texture",
+          "src": "/media/a/texture-0.png",
+          "sampler": {
+            "filter": "mipmap",
+            "wrap": "repeat",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "id": "4dfGRr",
+          "channel": 0
+        }
+      ]
+    }
+  ]
+}

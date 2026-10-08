@@ -1,0 +1,28 @@
+{
+  "ver": "0.1",
+  "info": {
+    "id": "MAINVR",
+    "name": "mainVR ignorée",
+    "username": "ShaderView",
+    "description": "Un shader qui définit mainVR : seul mainImage est affiché.",
+    "tags": [
+      "corpus",
+      "regression"
+    ],
+    "license": "GPL-3.0-or-later"
+  },
+  "renderpass": [
+    {
+      "type": "image",
+      "name": "Image",
+      "code": "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec2 uv = fragCoord / iResolution.xy;\n  fragColor = vec4(uv.x, 0.2, uv.y, 1.0);\n}\nvoid mainVR(out vec4 fragColor, in vec2 fragCoord, in vec3 fragRayOri, in vec3 fragRayDir) {\n  fragColor = vec4(fragRayDir * 0.5 + 0.5, 1.0);\n}",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "4dfGRr",
+          "channel": 0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "ver": "0.1",
+  "info": {
+    "id": "PASSE ",
+    "name": "Passe cubemap mipmap",
+    "username": "ShaderView",
+    "description": "Cubemap rendu lu en filtre mipmap : la chaîne est régénérée à chaque image.",
+    "tags": [
+      "corpus",
+      "regression"
+    ],
+    "license": "GPL-3.0-or-later"
+  },
+  "renderpass": [
+    {
+      "type": "cubemap",
+      "name": "Cube A",
+      "code": "void mainCubemap(out vec4 fragColor, in vec2 fragCoord, in vec3 rayOri, in vec3 rayDir) {\n  float t = step(0.0, sin(rayDir.x * 40.0 + iTime) * sin(rayDir.y * 40.0));\n  fragColor = vec4(vec3(t) * abs(rayDir), 1.0);\n}",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "4dX3Rr",
+          "channel": 0
+        }
+      ]
+    },
+    {
+      "type": "image",
+      "name": "Image",
+      "code": "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n  vec3 dir = normalize(vec3(uv, 1.0));\n  fragColor = vec4(textureLod(iChannel0, dir, 2.0 + 3.0 * step(0.0, uv.x)).rgb, 1.0);\n}",
+      "inputs": [
+        {
+          "channel": 0,
+          "ctype": "cubemap",
+          "src": "/media/previz/cubemap00.png",
+          "sampler": {
+            "filter": "mipmap",
+            "wrap": "clamp",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          },
+          "id": "4dX3Rr"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "4dfGRr",
+          "channel": 0
+        }
+      ]
+    }
+  ]
+}

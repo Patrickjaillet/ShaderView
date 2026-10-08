@@ -1,0 +1,41 @@
+{
+  "ver": "0.1",
+  "info": {
+    "id": "TEXTUR",
+    "name": "textureGrad",
+    "username": "ShaderView",
+    "description": "Gradients explicites et textureOffset.",
+    "tags": [
+      "corpus",
+      "regression"
+    ],
+    "license": "GPL-3.0-or-later"
+  },
+  "renderpass": [
+    {
+      "type": "image",
+      "name": "Image",
+      "code": "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec2 uv = fragCoord / iResolution.xy;\n  vec2 g = vec2(0.02 + uv.x * 0.2, 0.0);\n  vec3 a = textureGrad(iChannel0, uv * 4.0, g, g.yx).rgb;\n  vec3 b = textureOffset(iChannel0, uv * 4.0, ivec2(1, 0)).rgb;\n  fragColor = vec4(mix(a, b, step(0.5, uv.y)), 1.0);\n}",
+      "inputs": [
+        {
+          "channel": 0,
+          "ctype": "texture",
+          "src": "/media/a/texture-0.png",
+          "sampler": {
+            "filter": "mipmap",
+            "wrap": "repeat",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "id": "4dfGRr",
+          "channel": 0
+        }
+      ]
+    }
+  ]
+}

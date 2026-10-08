@@ -446,6 +446,7 @@ export class Inspecteur {
     this._rafraichirListe();
     if (this._entreeDetail !== null) this.afficherEnTete(this._entreeDetail);
     if (this._normaliseDetail !== null) this.afficherPasses(this._normaliseDetail);
+    if (this._rapportCompat !== null && this._rapportCompat !== undefined) this.afficherCompatibilite(this._rapportCompat);
     this.definirEtatMarcheSon(this.el.btnSon.getAttribute('aria-pressed') === 'true');
   }
 
@@ -562,6 +563,8 @@ export class Inspecteur {
   viderDetail() {
     this.el.detail.hidden = true;
     this.el.detailAlerte.hidden = true;
+    this.masquerLenteur();
+    this.afficherCompatibilite(null);
     this.el.detailSon.hidden = true;
     this.el.detailMusique.hidden = true;
     this.el.detailMusique.replaceChildren();
@@ -705,6 +708,41 @@ export class Inspecteur {
     this.el.detailPerf.textContent = buffers.length > 0 ? `${vitesse} · ${buffers}` : vitesse;
   }
 
+  /**
+   * Affiche le rapport de compatibilité du shader sélectionné : adaptations GLSL ES 1.00 → 3.00
+   * appliquées au code, fonctions Shadertoy ignorées (`mainVR`) et précision flottante insuffisante.
+   * Masque le panneau s'il n'y a rien à signaler (ou si `rapport` est null).
+   * @param {(import('./renderer.js').RapportCompatibilite & { precisionBasse?: boolean })|null} rapport
+   */
+  afficherCompatibilite(rapport) {
+    this._rapportCompat = rapport;
+    const lignes = [];
+    if (rapport !== null) {
+      for (const c of rapport.conversions) lignes.push(traduire('compat.conversion', { pass: c.passe, from: c.de, to: c.vers, count: c.occurrences }));
+      for (const i of rapport.inferences ?? []) lignes.push(traduire('compat.inference', { pass: i.passe, channel: i.canal, type: i.type }));
+      for (const a of rapport.avertissements) lignes.push(traduire(`compat.${a.code}`, { pass: a.passe }));
+      if (rapport.precisionBasse === true) lignes.push(traduire('compat.precision'));
+    }
+    this.el.detailCompatListe.replaceChildren(...lignes.map((texte) => noeud('li', '', texte)));
+    this.el.detailCompat.hidden = lignes.length === 0;
+  }
+
+  /**
+   * Signale un shader lent (images par seconde sous le seuil) avec un bouton pour le suspendre.
+   * @param {number} fps cadence mesurée
+   * @param {() => void} surSuspendre appelée au clic sur « Suspendre »
+   */
+  afficherLenteur(fps, surSuspendre) {
+    this.el.detailLenteurTexte.textContent = traduire('slow.message', { fps: Math.round(fps) });
+    this.el.btnLenteur.onclick = () => { surSuspendre(); this.masquerLenteur(); };
+    this.el.detailLenteur.hidden = false;
+  }
+
+  /** Masque l'avertissement de lenteur. */
+  masquerLenteur() {
+    this.el.detailLenteur.hidden = true;
+  }
+
   // -------------------------------------------------------------------------
   // Son (affichage seul ; la lecture elle-même relève de js/app.js)
   // -------------------------------------------------------------------------
@@ -813,6 +851,11 @@ export function elementsDepuisDocument() {
     detailTitre: document.getElementById('detail-titre'),
     detailMeta: document.getElementById('detail-meta'),
     detailAlerte: document.getElementById('detail-alerte'),
+    detailLenteur: document.getElementById('detail-lenteur'),
+    detailLenteurTexte: document.getElementById('detail-lenteur-texte'),
+    btnLenteur: document.getElementById('btn-lenteur'),
+    detailCompat: document.getElementById('detail-compat'),
+    detailCompatListe: document.getElementById('detail-compat-liste'),
     detailSon: document.getElementById('detail-son'),
     detailSonEtat: document.getElementById('detail-son-etat'),
     detailMusique: document.getElementById('detail-musique'),

@@ -210,6 +210,84 @@ export function genererMediaSubstitue(typeCanal, src, largeur, hauteur) {
 }
 
 // ---------------------------------------------------------------------------
+// Volumes 3D (canaux `volume`)
+// ---------------------------------------------------------------------------
+
+/**
+ * @typedef {object} VolumeDecode
+ * @property {number} largeur
+ * @property {number} hauteur
+ * @property {number} profondeur
+ * @property {1|2|4} canaux nombre de composantes par texel (3 canaux sont complétés en 4 avec un alpha opaque)
+ * @property {boolean} flottant vrai pour des composantes `float32`, faux pour des octets
+ * @property {Uint8Array|Float32Array} octets texels, X le plus rapide, puis Y, puis Z
+ */
+
+// Formats de composante connus du fichier `.bin` Shadertoy : 0 = octet non signé, 10 = flottant 32 bits.
+const FORMAT_BIN_OCTET = 0;
+const FORMAT_BIN_FLOTTANT = 10;
+// En-têtes possibles : signature (4 octets, little-endian), éventuellement un type (4 octets), dimensions X, Y, Z
+// (3 × 4 octets), puis nombre de canaux (1 octet), disposition (1 octet) et format (2 octets). Comme la variante
+// exacte n'est pas garantie par toutes les sources, chacune est essayée et seule celle dont la taille des données
+// correspond exactement à la taille du fichier est retenue.
+const DECALAGES_ENTETE_BIN = Object.freeze([
+  { dimensions: 4, taille: 20 },
+  { dimensions: 8, taille: 24 },
+]);
+
+/**
+ * Décode un fichier volume `.bin` de Shadertoy (bruit 3D, nuages…) en données prêtes pour `texImage3D`.
+ * @param {Uint8Array} octets contenu du fichier
+ * @returns {VolumeDecode}
+ * @throws {Error} si le fichier ne correspond à aucun en-tête reconnu (taille incohérente, format inconnu)
+ */
+export function decoderVolume(octets) {
+  const vue = new DataView(octets.buffer, octets.byteOffset, octets.byteLength);
+  for (const { dimensions, taille } of DECALAGES_ENTETE_BIN) {
+    if (octets.byteLength < taille) continue;
+    const largeur = vue.getUint32(dimensions, true);
+    const hauteur = vue.getUint32(dimensions + 4, true);
+    const profondeur = vue.getUint32(dimensions + 8, true);
+    const canaux = vue.getUint8(dimensions + 12);
+    const format = vue.getUint16(dimensions + 14, true);
+    const flottant = format === FORMAT_BIN_FLOTTANT;
+    if (format !== FORMAT_BIN_OCTET && !flottant) continue;
+    if (![1, 2, 3, 4].includes(canaux) || largeur < 1 || hauteur < 1 || profondeur < 1) continue;
+    if (largeur > 1024 || hauteur > 1024 || profondeur > 1024) continue;
+    const texels = largeur * hauteur * profondeur;
+    const tailleComposante = flottant ? 4 : 1;
+    if (octets.byteLength - taille !== texels * canaux * tailleComposante) continue;
+    const brut = octets.slice(taille);
+    const source = flottant ? new Float32Array(brut.buffer, 0, texels * canaux) : brut;
+    if (canaux !== 3) return { largeur, hauteur, profondeur, canaux, flottant, octets: source };
+    // WebGL2 n'a pas de format RGB renderable/filtrable universel pour les volumes : RGB complété en RGBA.
+    const etendu = flottant ? new Float32Array(texels * 4) : new Uint8Array(texels * 4);
+    for (let i = 0; i < texels; i += 1) {
+      etendu[i * 4] = source[i * 3];
+      etendu[i * 4 + 1] = source[i * 3 + 1];
+      etendu[i * 4 + 2] = source[i * 3 + 2];
+      etendu[i * 4 + 3] = flottant ? 1 : 255;
+    }
+    return { largeur, hauteur, profondeur, canaux: 4, flottant, octets: etendu };
+  }
+  throw new Error('Fichier volume (.bin) non reconnu : en-tête ou taille incohérents.');
+}
+
+/**
+ * Volume procédural de repli (bruit RGBA déterministe, 4 composantes indépendantes comme le « RGBA Noise 3D »
+ * de Shadertoy), utilisé quand le fichier `.bin` d'origine est absent ou illisible.
+ * @param {string} src
+ * @param {number} [taille] côté du cube, en texels
+ * @returns {VolumeDecode}
+ */
+export function genererVolumeSubstitue(src, taille = 32) {
+  const alea = xorshift32(hacherGraine(src));
+  const octets = new Uint8Array(taille * taille * taille * 4);
+  for (let i = 0; i < octets.length; i += 1) octets[i] = Math.floor(alea.next().value * 255);
+  return { largeur: taille, hauteur: taille, profondeur: taille, canaux: 4, flottant: false, octets };
+}
+
+// ---------------------------------------------------------------------------
 // Classification d'une entrée de canal (pour l'inspecteur, Phase 7)
 // ---------------------------------------------------------------------------
 

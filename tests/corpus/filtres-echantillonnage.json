@@ -1,0 +1,65 @@
+{
+  "ver": "0.1",
+  "info": {
+    "id": "FILTRE",
+    "name": "Filtres",
+    "username": "ShaderView",
+    "description": "nearest, linear, mipmap, répétition, sur le même média.",
+    "tags": [
+      "corpus",
+      "regression"
+    ],
+    "license": "GPL-3.0-or-later"
+  },
+  "renderpass": [
+    {
+      "type": "image",
+      "name": "Image",
+      "code": "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec2 uv = fragCoord / iResolution.xy;\n  vec2 p = vec2(uv.x * 3.0, fract(uv.y * 3.0) * 3.0);\n  vec3 col;\n  if (uv.y > 0.66) col = texture(iChannel0, p).rgb;\n  else if (uv.y > 0.33) col = texture(iChannel1, p).rgb;\n  else col = texture(iChannel2, p).rgb;\n  fragColor = vec4(col, 1.0);\n}",
+      "inputs": [
+        {
+          "channel": 0,
+          "ctype": "texture",
+          "src": "/media/a/texture-0.png",
+          "sampler": {
+            "filter": "nearest",
+            "wrap": "clamp",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          }
+        },
+        {
+          "channel": 1,
+          "ctype": "texture",
+          "src": "/media/a/texture-1.png",
+          "sampler": {
+            "filter": "linear",
+            "wrap": "repeat",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          }
+        },
+        {
+          "channel": 2,
+          "ctype": "texture",
+          "src": "/media/a/texture-2.png",
+          "sampler": {
+            "filter": "mipmap",
+            "wrap": "repeat",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "id": "4dfGRr",
+          "channel": 0
+        }
+      ]
+    }
+  ]
+}

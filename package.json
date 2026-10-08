@@ -17,6 +17,7 @@
     "favicon": "node tools/inline-favicon.mjs",
     "audit-reseau": "node tools/audit-reseau.mjs",
     "build": "node tools/build.mjs",
+    "regression": "node tools/regression-visuelle.mjs",
     "test": "node --test \"tests/*.test.mjs\""
   }
 }

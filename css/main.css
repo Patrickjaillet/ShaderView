@@ -178,6 +178,30 @@ a {
   box-shadow: 0 1rem 4rem #000a;
 }
 
+.diagnostic__aide {
+  margin: 0;
+  color: var(--texte-discret);
+  font-size: 0.85rem;
+}
+
+.diagnostic__texte {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;
+  font-size: 0.75rem;
+  resize: vertical;
+}
+
+.diagnostic__etat {
+  color: var(--texte-discret);
+  font-size: 0.8rem;
+}
+
+.entete__diagnostic {
+  margin-left: auto;
+  margin-right: 0.5rem;
+}
+
 .dialogue-export::backdrop {
   background: #050812bb;
   backdrop-filter: blur(2px);
@@ -320,6 +344,27 @@ a {
   margin: 0.5rem 0 0;
   color: var(--attention);
   font-size: 0.85rem;
+}
+
+.detail__lenteur {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.detail__compat {
+  margin-top: 0.5rem;
+  color: var(--texte-discret);
+  font-size: 0.8rem;
+}
+
+.detail__compat summary {
+  cursor: pointer;
+}
+
+.detail__compat ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.2rem;
 }
 
 .detail__son {

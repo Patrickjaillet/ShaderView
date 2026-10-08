@@ -1,0 +1,41 @@
+{
+  "ver": "0.1",
+  "info": {
+    "id": "CUBEMA",
+    "name": "Cubemap statique",
+    "username": "ShaderView",
+    "description": "samplerCube sur un média, filtrage linéaire.",
+    "tags": [
+      "corpus",
+      "regression"
+    ],
+    "license": "GPL-3.0-or-later"
+  },
+  "renderpass": [
+    {
+      "type": "image",
+      "name": "Image",
+      "code": "void mainImage(out vec4 fragColor, in vec2 fragCoord) {\n  vec2 uv = (fragCoord - 0.5 * iResolution.xy) / iResolution.y;\n  vec3 dir = normalize(vec3(uv, 1.0));\n  float a = iTime;\n  dir.xz = mat2(cos(a), -sin(a), sin(a), cos(a)) * dir.xz;\n  fragColor = vec4(texture(iChannel0, dir).rgb, 1.0);\n}",
+      "inputs": [
+        {
+          "channel": 0,
+          "ctype": "cubemap",
+          "src": "/media/a/cube-statique.png",
+          "sampler": {
+            "filter": "linear",
+            "wrap": "clamp",
+            "vflip": "false",
+            "srgb": "false",
+            "internal": "byte"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "id": "4dfGRr",
+          "channel": 0
+        }
+      ]
+    }
+  ]
+}
