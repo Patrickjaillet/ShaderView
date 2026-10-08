@@ -387,7 +387,6 @@ a {
 .onglet:hover,
 .onglet:focus-visible {
   color: var(--texte);
-  outline: none;
 }
 
 .onglet--actif {
@@ -467,7 +466,6 @@ button.journal__ligne {
 button.journal__ligne:hover,
 button.journal__ligne:focus-visible {
   color: var(--attention);
-  outline: none;
 }
 
 /* Catalogue */
@@ -509,7 +507,6 @@ button.journal__ligne:focus-visible {
 .bouton:hover,
 .bouton:focus-visible {
   border-color: var(--accent);
-  outline: none;
 }
 
 .etiquette-visible {
@@ -533,7 +530,6 @@ button.journal__ligne:focus-visible {
 
 .champ:focus-visible {
   border-color: var(--accent);
-  outline: none;
 }
 
 .catalogue__recherche .champ {
@@ -622,7 +618,6 @@ button.journal__ligne:focus-visible {
 .element:focus-visible,
 .element[aria-selected="true"] {
   border-color: var(--accent);
-  outline: none;
 }
 
 .element--erreur {
@@ -686,4 +681,22 @@ button.journal__ligne:focus-visible {
 
 .depot[hidden] {
   display: none;
+}
+
+/* Indicateur de focus clavier visible pour tous les éléments interactifs. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Réduction des animations demandée par le système : aucun mouvement d'interface superflu. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
