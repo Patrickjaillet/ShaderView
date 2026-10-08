@@ -178,6 +178,23 @@ a {
   box-shadow: 0 1rem 4rem #000a;
 }
 
+.bandeau-maj {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: var(--fond-surface);
+  border-bottom: 1px solid var(--accent);
+  color: var(--texte);
+  font-size: 0.9rem;
+}
+
+.bandeau-maj[hidden] {
+  display: none;
+}
+
 .diagnostic__aide {
   margin: 0;
   color: var(--texte-discret);
@@ -621,6 +638,28 @@ button.journal__ligne:focus-visible {
   margin: 0;
   padding: 0;
   overflow-y: auto;
+  list-style: none;
+}
+
+/* Liste virtualisée (grands catalogues, voir inspector.js) : lignes de hauteur fixe, pas vertical HAUTEUR_LIGNE = 90 px. */
+.catalogue__liste--virtuelle {
+  display: block;
+}
+
+.catalogue__liste--virtuelle > li:not(.catalogue__espace) {
+  height: 84px;
+  margin-bottom: 6px;
+}
+
+.catalogue__liste--virtuelle .element {
+  box-sizing: border-box;
+  height: 100%;
+  overflow: hidden;
+}
+
+.catalogue__espace {
+  margin: 0;
+  padding: 0;
   list-style: none;
 }
 

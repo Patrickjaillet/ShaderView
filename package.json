@@ -18,6 +18,10 @@
     "audit-reseau": "node tools/audit-reseau.mjs",
     "build": "node tools/build.mjs",
     "regression": "node tools/regression-visuelle.mjs",
+    "sw": "node tools/generer-sw.mjs",
+    "budget": "node tools/budget-performance.mjs",
+    "hors-ligne": "node tools/controle-hors-ligne.mjs",
+    "grand-catalogue": "node tools/controle-grand-catalogue.mjs",
     "test": "node --test \"tests/*.test.mjs\""
   }
 }

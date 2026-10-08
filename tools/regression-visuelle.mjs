@@ -25,7 +25,7 @@
 // Code de sortie : 0 si tout est conforme, 1 sinon.
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { basename, extname, join, normalize, sep } from 'node:path';
@@ -37,7 +37,8 @@ import { analyserMp4, analyserWebm } from './lib/conteneurs.mjs';
 const RACINE = fileURLToPath(new URL('..', import.meta.url));
 const DOSSIER_CORPUS = join(RACINE, 'tests', 'corpus');
 const DOSSIER_REFERENCES = join(RACINE, 'tests', 'references');
-const TYPES_MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css', '.json': 'application/json' };
+const TYPES_MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css', '.json': 'application/json',
+  '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png', '.mp3': 'audio/mpeg' };
 
 const NAVIGATEURS_PAR_DEFAUT = [
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
@@ -90,12 +91,13 @@ export function trouverNavigateur(demande) {
   return trouve;
 }
 
-export function demarrerServeur(racineBrute) {
+export function demarrerServeur(racineBrute, portDemande = 0) {
   const racine = normalize(racineBrute).replace(/[\\/]+$/, '');
   const serveur = createServer((requete, reponse) => {
-    const chemin = normalize(join(racine, decodeURIComponent(new URL(requete.url, 'http://x').pathname)));
+    let chemin = normalize(join(racine, decodeURIComponent(new URL(requete.url, 'http://x').pathname)));
     if (!chemin.startsWith(racine + sep) && chemin !== racine) { reponse.writeHead(403).end(); return; }
     try {
+      if (statSync(chemin).isDirectory()) chemin = join(chemin, 'index.html');
       const contenu = readFileSync(chemin);
       reponse.writeHead(200, { 'Content-Type': TYPES_MIME[extname(chemin)] ?? 'application/octet-stream' });
       reponse.end(contenu);
@@ -103,7 +105,7 @@ export function demarrerServeur(racineBrute) {
       reponse.writeHead(404).end();
     }
   });
-  return new Promise((resolu) => serveur.listen(0, '127.0.0.1', () => resolu({ serveur, port: serveur.address().port })));
+  return new Promise((resolu) => serveur.listen(portDemande, '127.0.0.1', () => resolu({ serveur, port: serveur.address().port })));
 }
 
 // Client minimal du protocole DevTools (WebSocket global de Node).
@@ -167,7 +169,7 @@ export async function lancerNavigateur(chemin, urlPage) {
   let cible = null;
   for (let i = 0; i < 100 && cible === null; i += 1) {
     const cibles = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-    cible = cibles.find((c) => c.type === 'page' && c.url.startsWith('http://127.0.0.1')) ?? null;
+    cible = cibles.find((c) => c.type === 'page' && (c.url.startsWith('http://127.0.0.1') || c.url === urlPage)) ?? null;
     if (cible === null) await pause(100);
   }
   if (cible === null) { processus.kill(); throw new Error('Page de test introuvable dans le navigateur.'); }

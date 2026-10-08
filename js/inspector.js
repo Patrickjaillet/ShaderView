@@ -141,6 +141,49 @@ export function composerListe(entrees, {
 }
 
 // ---------------------------------------------------------------------------
+// Liste virtualisée (grands catalogues)
+// ---------------------------------------------------------------------------
+
+/** Au-delà de ce nombre d'entrées affichées, seules les lignes visibles (plus une marge) existent dans le document. */
+export const SEUIL_VIRTUALISATION = 1000;
+
+/** Pas vertical d'une ligne de la liste virtualisée, en pixels (hauteur fixe de la ligne plus espacement) ; voir css/main.css. */
+export const HAUTEUR_LIGNE = 90;
+
+/** Lignes montées de part et d'autre de la zone visible, pour qu'un défilement rapide ne montre jamais de vide. */
+export const SURPLUS_LIGNES = 6;
+
+/**
+ * Fenêtre de lignes à monter pour une position de défilement donnée.
+ * @param {{ defilement: number, hauteurVue: number, total: number, hauteurLigne?: number, surplus?: number }} options
+ * @returns {{ debut: number, fin: number, espaceHaut: number, espaceBas: number, hauteurTotale: number }} lignes [debut, fin) à monter
+ *          et hauteurs (px) des espaceurs qui remplacent les lignes absentes avant et après
+ */
+export function calculerFenetre({ defilement, hauteurVue, total, hauteurLigne = HAUTEUR_LIGNE, surplus = SURPLUS_LIGNES }) {
+  if (!(total > 0)) return { debut: 0, fin: 0, espaceHaut: 0, espaceBas: 0, hauteurTotale: 0 };
+  const haut = Math.max(0, defilement);
+  const premiere = Math.floor(haut / hauteurLigne);
+  const derniere = Math.ceil((haut + Math.max(0, hauteurVue)) / hauteurLigne);
+  const debut = Math.min(total, Math.max(0, premiere - surplus));
+  const fin = Math.min(total, Math.max(debut, derniere + surplus));
+  return { debut, fin, espaceHaut: debut * hauteurLigne, espaceBas: (total - fin) * hauteurLigne, hauteurTotale: total * hauteurLigne };
+}
+
+/**
+ * Position de défilement qui rend la ligne `index` entièrement visible en bougeant le moins possible.
+ * @param {number} index
+ * @param {{ defilement: number, hauteurVue: number, hauteurLigne?: number }} options
+ * @returns {number} nouvelle position (identique à `defilement` si la ligne est déjà visible)
+ */
+export function defilementPour(index, { defilement, hauteurVue, hauteurLigne = HAUTEUR_LIGNE }) {
+  const haut = index * hauteurLigne;
+  const bas = haut + hauteurLigne;
+  if (haut < defilement) return haut;
+  if (bas > defilement + hauteurVue) return Math.max(0, bas - hauteurVue);
+  return defilement;
+}
+
+// ---------------------------------------------------------------------------
 // Préférences (stockage local du navigateur)
 // ---------------------------------------------------------------------------
 
@@ -383,6 +426,16 @@ export class Inspecteur {
     });
     this.el.btnSon.addEventListener('click', () => this._surBasculerSon());
     this.el.liste.addEventListener('keydown', (e) => this._surClavierListe(e));
+    this._virtuelle = false;
+    this._entreesAffichees = [];
+    this._fenetre = null;
+    let imagePlanifiee = false;
+    // Liste virtualisée : la fenêtre suit le défilement, au plus une reconstruction par image d'affichage.
+    this.el.liste.addEventListener('scroll', () => {
+      if (!this._virtuelle || imagePlanifiee) return;
+      imagePlanifiee = true;
+      requestAnimationFrame(() => { imagePlanifiee = false; if (this._virtuelle) this._rendreFenetre(false); });
+    }, { passive: true });
   }
 
   _casesFiltres() {
@@ -463,8 +516,18 @@ export class Inspecteur {
   _rafraichirListe() {
     this._sauvegarderPreferences();
     const entrees = this._listeComposee();
-    this.el.liste.replaceChildren(...entrees.map((e) => this._construireElementListe(e)));
-    if (this._surListeAffichee !== null) this._surListeAffichee(entrees);
+    this._entreesAffichees = entrees;
+    this._virtuelle = entrees.length > SEUIL_VIRTUALISATION;
+    this.el.liste.classList.toggle('catalogue__liste--virtuelle', this._virtuelle);
+    if (this._virtuelle) {
+      // Grand catalogue : seules les lignes visibles existent dans le document, la miniature n'est demandée que pour elles.
+      this.el.liste.scrollTop = 0;
+      this._fenetre = null;
+      this._rendreFenetre(true);
+    } else {
+      this.el.liste.replaceChildren(...entrees.map((e) => this._construireElementListe(e)));
+      if (this._surListeAffichee !== null) this._surListeAffichee(entrees);
+    }
     const n = entrees.length;
     const total = this._entrees.length;
     let message = n === total
@@ -486,13 +549,59 @@ export class Inspecteur {
     this.el.etat.textContent = message;
   }
 
-  _construireElementListe(entree) {
+  /**
+   * Monte les lignes de la fenêtre visible entre deux espaceurs de la hauteur des lignes absentes (liste virtualisée).
+   * Le bouton qui avait le focus le retrouve s'il fait toujours partie de la fenêtre.
+   * @param {boolean} forcer reconstruire même si la fenêtre n'a pas changé
+   */
+  _rendreFenetre(forcer) {
+    const entrees = this._entreesAffichees;
+    const fenetre = calculerFenetre({ defilement: this.el.liste.scrollTop, hauteurVue: this.el.liste.clientHeight || 600, total: entrees.length });
+    if (!forcer && this._fenetre !== null && this._fenetre.debut === fenetre.debut && this._fenetre.fin === fenetre.fin) return;
+    this._fenetre = fenetre;
+    const cleFocus = this.el.liste.contains(document.activeElement) ? document.activeElement.dataset?.cle : undefined;
+    const espaceur = (hauteur) => {
+      const li = document.createElement('li');
+      li.className = 'catalogue__espace';
+      li.setAttribute('aria-hidden', 'true');
+      li.style.height = `${hauteur}px`;
+      return li;
+    };
+    const visibles = entrees.slice(fenetre.debut, fenetre.fin);
+    this.el.liste.replaceChildren(
+      espaceur(fenetre.espaceHaut),
+      ...visibles.map((e, i) => this._construireElementListe(e, { position: fenetre.debut + i + 1, total: entrees.length })),
+      espaceur(fenetre.espaceBas),
+    );
+    if (this._surListeAffichee !== null) this._surListeAffichee(visibles);
+    this._marquerSelection();
+    if (cleFocus !== undefined) {
+      for (const b of this.el.liste.querySelectorAll('.element')) if (b.dataset.cle === cleFocus) b.focus({ preventScroll: true });
+    }
+  }
+
+  /**
+   * Fait défiler la liste virtualisée pour que la ligne `index` soit visible.
+   * @param {number} index
+   * @returns {boolean} vrai si la position de défilement a changé
+   */
+  _defilerVers(index) {
+    const liste = this.el.liste;
+    const cible = defilementPour(index, { defilement: liste.scrollTop, hauteurVue: liste.clientHeight || 600 });
+    if (cible === liste.scrollTop) return false;
+    liste.scrollTop = cible;
+    return true;
+  }
+
+  _construireElementListe(entree, { position = null, total = null } = {}) {
     const li = document.createElement('li');
     const bouton = noeud('button', entree.erreur === null ? 'element' : 'element element--erreur');
     bouton.type = 'button';
     bouton.id = `element-${entree.cle}`;
     bouton.setAttribute('role', 'option');
     bouton.dataset.cle = entree.cle;
+    // Liste virtualisée : la position et la taille de l'ensemble sont annoncées, les lignes absentes n'étant pas dans le document.
+    if (position !== null) { bouton.setAttribute('aria-posinset', String(position)); bouton.setAttribute('aria-setsize', String(total)); }
     // Miniature : l'image dédiée à cette entrée est fournie (et remplie) par thumbnails.js ;
     // ce module ne la dessine pas lui-même.
     bouton.append(this._fournirMiniature !== null ? this._fournirMiniature(entree) : noeud('img', 'element__miniature'));
@@ -534,11 +643,33 @@ export class Inspecteur {
    */
   definirSelection(cle) {
     this._selectionCle = cle;
+    if (this._virtuelle) {
+      // Sélection restaurée ou choisie ailleurs que dans la liste : amener sa ligne dans la zone montée.
+      const index = this._entreesAffichees.findIndex((e) => e.cle === cle);
+      if (index >= 0 && this._defilerVers(index)) this._rendreFenetre(true);
+    }
     this._marquerSelection();
     this._sauvegarderPreferences();
   }
 
+  _surClavierListeVirtuelle(evenement) {
+    const entrees = this._entreesAffichees;
+    if (evenement.key === 'ArrowDown' || evenement.key === 'ArrowUp') {
+      evenement.preventDefault();
+      const pas = evenement.key === 'ArrowDown' ? 1 : -1;
+      const actuel = entrees.findIndex((e) => e.cle === this._selectionCle);
+      const suivant = actuel === -1 ? 0 : (actuel + pas + entrees.length) % entrees.length;
+      this._defilerVers(suivant);
+      this._rendreFenetre(true);
+      for (const b of this.el.liste.querySelectorAll('.element')) if (b.dataset.cle === entrees[suivant].cle) b.focus({ preventScroll: true });
+      this._surSelection(entrees[suivant]);
+    } else if (evenement.key === 'Escape') {
+      this.el.recherche.focus();
+    }
+  }
+
   _surClavierListe(evenement) {
+    if (this._virtuelle) { this._surClavierListeVirtuelle(evenement); return; }
     const boutons = [...this.el.liste.querySelectorAll('.element')];
     if (boutons.length === 0) return;
     const indexActuel = boutons.findIndex((b) => b.dataset.cle === this._selectionCle);

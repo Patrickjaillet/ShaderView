@@ -1,0 +1,17 @@
+{
+  "name": "ShaderView",
+  "short_name": "ShaderView",
+  "description": "Visionneuse hors-ligne de shaders Shadertoy au format JSON",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0f1a",
+  "theme_color": "#0b0f1a",
+  "icons": [
+    { "src": "branding/icone-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "branding/icone-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "branding/icone-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "branding/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

@@ -17,7 +17,9 @@ const API_INTERDITES = [
   /\bXMLHttpRequest\b/, /\bWebSocket\b/, /\bEventSource\b/, /\bsendBeacon\b/, /\bimportScripts\b/,
   /\bRTCPeerConnection\b/, /\bnavigator\.serviceWorker\b/, /\bimport\s*\(\s*['"`]https?:/,
 ];
-const FETCH_AUTORISE = new Set(['js/catalog.js']);
+// fetch : lecture des fichiers du site (catalog.js) et relais du Service Worker vers le réseau de même origine (sw.js,
+// qui ne s'occupe que des requêtes de l'origine du site, voir son filtre d'origine).
+const FETCH_AUTORISE = new Set(['js/catalog.js', 'sw.js']);
 const URL_ABSOLUE = /(?:(?:src|href)=|url\(|import\s+[^;]*from\s*|fetch\(\s*)['"(]?\s*(?:https?:)?\/\/[^\s'")]+/gi;
 const LIENS_AUTORISES = /^https:\/\/patrickjaillet\.github\.io\/ShaderView/;
 
@@ -74,6 +76,7 @@ export function auditerDepot(racine = RACINE) {
     ...fichiers(join(racine, 'js'), ['.js']),
     ...fichiers(join(racine, 'css'), ['.css']),
     join(racine, 'index.html'),
+    join(racine, 'sw.js'),
   ];
   for (const chemin of sources) {
     const relatif = relative(racine, chemin).split(sep).join('/');

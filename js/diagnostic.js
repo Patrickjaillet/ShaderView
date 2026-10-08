@@ -112,6 +112,9 @@ function oui(valeur) { return valeur ? 'oui' : 'non'; }
  * @property {{ videoEncoder: boolean, audioEncoder: boolean, opfs: boolean, selecteurFichier: boolean, audioContext: boolean, webm: string[], mp4: string[] }} capacites
  * @property {{ fichier?: string, titre?: string, alerte?: string|null, inferences?: { passe: string, canal: number, type: string }[] }|null} shader
  * @property {{ source: string, message: string, trace: string, occurrences: number, instant: number }[]} erreurs
+ * @property {{ entrees: number, octets: number }|null} [cacheMiniatures] null si IndexedDB est indisponible
+ * @property {{ possible: boolean, actif: boolean }} [horsLigne] état du Service Worker
+ * @property {'worker'|'principal'|'inconnu'} [modeMiniatures] où les miniatures sont rendues
  */
 
 /**
@@ -162,6 +165,15 @@ export function construireDiagnostic(infos) {
     lignes.push(ligne('Fichier', infos.shader.fichier), ligne('Titre', infos.shader.titre), ligne('Alerte', infos.shader.alerte ?? 'aucune'));
     for (const i of infos.shader.inferences ?? []) lignes.push(`  ${i.passe} : iChannel${i.canal} déduit « ${i.type} »`);
   }
+  lignes.push('', '[Hors-ligne]');
+  if (infos.horsLigne === undefined) lignes.push('Non évalué.');
+  else if (!infos.horsLigne.possible) lignes.push('Service Worker indisponible (contexte non sécurisé ou navigateur sans prise en charge).');
+  else lignes.push(infos.horsLigne.actif ? 'Service Worker actif : la page est servie par le cache si la connexion tombe.' : 'Service Worker enregistré, pas encore actif sur cette page (rechargez).');
+  lignes.push('', '[Cache des miniatures]');
+  if (infos.cacheMiniatures === null || infos.cacheMiniatures === undefined) lignes.push('IndexedDB indisponible : miniatures régénérées à chaque visite.');
+  else lignes.push(`${infos.cacheMiniatures.entrees} image(s), ${(infos.cacheMiniatures.octets / 1048576).toFixed(1)} Mo`);
+  const modes = { worker: 'dans un Worker (OffscreenCanvas)', principal: 'sur le fil principal', inconnu: 'pas encore rendues' };
+  lignes.push(`Rendu des miniatures : ${modes[infos.modeMiniatures ?? 'inconnu'] ?? 'inconnu'}`);
   lignes.push('', `[Erreurs d’exécution : ${infos.erreurs.length}]`);
   if (infos.erreurs.length === 0) lignes.push('Aucune.');
   for (const e of infos.erreurs) {

@@ -145,6 +145,16 @@ export class Catalogue {
     return this._lecteurMedia(nom);
   }
 
+  /**
+   * Lit un fichier du catalogue sans le conserver en mémoire : sert à le faire garder par le Service Worker pour l'usage
+   * hors-ligne (voir hors-ligne.js, preparerHorsLigne).
+   * @param {string} fichier
+   * @returns {Promise<void>}
+   */
+  async prechargerFichier(fichier) {
+    await this._lecteur(fichier);
+  }
+
   /** Nombre de fichiers en erreur (fichier illisible ou shader invalide). */
   get nbErreurs() {
     return this.entrees.filter((e) => e.erreur !== null).length;

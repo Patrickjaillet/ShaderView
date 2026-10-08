@@ -31,7 +31,10 @@ import { decoderImage, decoderVolume, genererMediaSubstitue, genererVolumeSubsti
 import { CANAUX_AVEC_MEDIA } from './shader-meta.js';
 import { LecteurAudio, TAILLE_FFT, construireTextureVisualiseur, rendreSonHorsLigne, synchroniserHorlogeAvecAudio } from './audio.js';
 import { Inspecteur, elementsDepuisDocument } from './inspector.js';
-import { GenerateurMiniatures } from './thumbnails.js';
+import { GenerateurMiniatures, PREFIXE_CACHE, RenduMiniaturesWorker } from './thumbnails.js';
+import { CacheMiniatures } from './cache-miniatures.js';
+import { ModeEconomie, batterieFaible } from './economie.js';
+import { enregistrerServiceWorker, etatHorsLigne, preparerHorsLigne } from './hors-ligne.js';
 import { ExportVideo, FORMAT_EXPORT, nomFichierExport as fabriquerNomFichierExport } from './export/video.js';
 import { definirLangue, initialiserLangue, langue, traduire } from './i18n.js';
 import { JournalErreurs, SEUIL_AVERTISSEMENT_TELECHARGEMENT, VERSION_APPLICATION, construireDiagnostic, estimerTailleExport, installerCaptureErreurs } from './diagnostic.js';
@@ -68,6 +71,10 @@ const etat = {
   dernieresDurees: [],
   suiviLenteur: new SuiviLenteur(),
   journalErreurs: new JournalErreurs(),
+  cacheMiniatures: null,
+  economie: new ModeEconomie(),
+  /** Vrai si l'horloge a été mise en pause parce que l'onglet est devenu invisible (reprise au retour). */
+  pauseOngletMasque: false,
   normaliseActive: null,
   entreeSelectionnee: null,
   exportEnCours: false,
@@ -338,12 +345,56 @@ function brancherTransport() {
   });
 }
 
+/**
+ * Onglet masqué : sans son à suivre, l'horloge du shader est mise en pause (le navigateur suspend de toute façon
+ * l'animation, et le temps sauterait au retour) puis reprise au retour. Avec un son en lecture, l'horloge reste calée sur lui.
+ */
+function brancherVisibilite() {
+  document.addEventListener('visibilitychange', () => {
+    const horloge = etat.moteur?.horloge;
+    if (horloge === undefined) return;
+    if (document.hidden) {
+      if (horloge.enMarche && lecteursAudioSelection().length === 0 && !etat.exportEnCours) {
+        horloge.pause();
+        etat.pauseOngletMasque = true;
+      }
+    } else if (etat.pauseOngletMasque) {
+      etat.pauseOngletMasque = false;
+      horloge.lire();
+      etat.renduNecessaire = true;
+    }
+  });
+}
+
+/** Case « Mode économie » et suggestion automatique quand la batterie est faible et ne se recharge pas. */
+function brancherEconomie() {
+  el.transportEconomie.checked = etat.economie.actif;
+  el.transportEconomie.addEventListener('change', () => {
+    etat.economie.definir(el.transportEconomie.checked);
+    el.transportEtat.textContent = '';
+  });
+  if (typeof navigator.getBattery !== 'function' || etat.economie.choixExplicite !== null) return;
+  navigator.getBattery().then((batterie) => {
+    if (batterieFaible(batterie) && etat.economie.suggerer()) {
+      el.transportEconomie.checked = true;
+      el.transportEtat.textContent = traduire('transport.economyBattery');
+    }
+  }).catch(() => {});
+}
+
 function demarrerBoucle() {
   if (etat.boucleActive) return;
   etat.boucleActive = true;
   let dernierHorodatage = null;
+  let dernierRendu = null;
   const image = (horodatage) => {
     if (!etat.boucleActive) return;
+    // Mode économie : image d'affichage sautée, le temps écoulé reste compté (dernierHorodatage n'est pas avancé).
+    if (etat.moteur !== null && etat.economie.doitSauter(horodatage, dernierRendu, etat.moteur.horloge.enMarche)) {
+      requestAnimationFrame(image);
+      return;
+    }
+    dernierRendu = horodatage;
     if (etat.moteur !== null && !etat.exportEnCours) {
       const deltaSecondes = dernierHorodatage === null ? 0 : (horodatage - dernierHorodatage) / 1000;
       dernierHorodatage = horodatage;
@@ -1219,7 +1270,48 @@ async function collecterDiagnostic() {
       inferences: etat.moteur?.inferences ?? [],
     },
     erreurs: etat.journalErreurs.entrees,
+    cacheMiniatures: etat.cacheMiniatures?.disponible ? await etat.cacheMiniatures.statistiques() : null,
+    horsLigne: etatHorsLigne(),
+    modeMiniatures: etat.miniatures?.mode ?? 'inconnu',
   };
+}
+
+/** Propose la nouvelle version du site : elle ne remplace l'actuelle qu'après un clic sur « Recharger ». */
+function afficherBandeauMiseAJour(appliquer) {
+  const bandeau = document.getElementById('bandeau-maj');
+  bandeau.hidden = false;
+  document.getElementById('btn-maj').onclick = appliquer;
+  document.getElementById('btn-maj-plus-tard').onclick = () => { bandeau.hidden = true; };
+}
+
+/**
+ * Fait garder au Service Worker tous les fichiers du catalogue du site (shaders, médias, bibliothèque audio) pour une utilisation
+ * sans connexion. Les fichiers déjà lus l'ont été au passage ; ceci complète le reste, à la demande de l'utilisateur.
+ */
+async function garderToutHorsLigne() {
+  if (!etatHorsLigne().actif) { el.diagnosticEtat.textContent = traduire('offline.notActive'); return; }
+  const catalogue = etat.catalogue;
+  if (catalogue === null || catalogue.source !== SOURCES.MANIFESTE) { el.diagnosticEtat.textContent = traduire('offline.notSite'); return; }
+  const taches = [
+    ...[...new Set(catalogue.entrees.filter((e) => e.erreur === null).map((e) => e.fichier))].map((fichier) => () => catalogue.prechargerFichier(fichier)),
+    ...[...catalogue.media].map((nom) => () => catalogue.contenuMedia(nom)),
+    ...(etat.bibliothequeAudio?.pistes ?? []).map((nom) => () => etat.bibliothequeAudio.lire(nom)),
+  ];
+  const bouton = document.getElementById('diagnostic-hors-ligne');
+  bouton.disabled = true;
+  const resultat = await preparerHorsLigne(taches, (tache) => tache(), {
+    surProgres: (fait, total) => { el.diagnosticEtat.textContent = traduire('offline.progress', { done: fait, total }); },
+  });
+  bouton.disabled = false;
+  el.diagnosticEtat.textContent = resultat.echecs === 0
+    ? traduire('offline.done', { count: resultat.reussis })
+    : traduire('offline.doneFailed', { count: resultat.reussis, failed: resultat.echecs });
+}
+
+async function viderCacheMiniatures() {
+  const nombre = await etat.cacheMiniatures.vider();
+  el.diagnosticEtat.textContent = traduire('diag.cacheCleared', { count: nombre });
+  await actualiserDiagnostic();
 }
 
 async function actualiserDiagnostic() {
@@ -1499,6 +1591,9 @@ function demarrer() {
   document.getElementById('btn-diagnostic').addEventListener('click', ouvrirDiagnostic);
   document.getElementById('diagnostic-fermer').addEventListener('click', () => el.dialogueDiagnostic.close());
   document.getElementById('diagnostic-copier').addEventListener('click', copierDiagnostic);
+  document.getElementById('diagnostic-vider-cache').addEventListener('click', () => { void viderCacheMiniatures(); });
+  document.getElementById('diagnostic-hors-ligne').addEventListener('click', () => { void garderToutHorsLigne(); });
+  void enregistrerServiceWorker({ surMiseAJour: afficherBandeauMiseAJour });
   document.getElementById('diagnostic-vider').addEventListener('click', () => { etat.journalErreurs.vider(); void actualiserDiagnostic(); });
   el.scene = document.querySelector('.scene');
   el.viewport = document.getElementById('viewport');
@@ -1526,11 +1621,18 @@ function demarrer() {
   el.transportPosition = document.getElementById('transport-position');
   el.transportTemps = document.getElementById('transport-temps');
   el.transportBoucle = document.getElementById('transport-boucle');
+  el.transportEconomie = document.getElementById('transport-economie');
   el.transportPleinEcran = document.getElementById('transport-plein-ecran');
   el.transportCapture = document.getElementById('transport-capture');
   el.transportEtat = document.getElementById('transport-etat');
 
+  etat.cacheMiniatures = new CacheMiniatures();
+  // Purge différée (entrées d'une ancienne version du rendu, excédent) : hors du chemin critique du démarrage.
+  setTimeout(() => { void etat.cacheMiniatures.purger(PREFIXE_CACHE); }, 5000);
   etat.miniatures = new GenerateurMiniatures({
+    cache: etat.cacheMiniatures,
+    // Rendu dans un Worker (OffscreenCanvas) quand le navigateur le permet, sinon sur le fil principal.
+    rendreExterne: new RenduMiniaturesWorker(),
     lireShader: (entree) => etat.catalogue.contenu(entree),
     // Les compilations/rendus WebGL synchrones des miniatures sont du travail de fond :
     // ils ne démarrent que lorsque le shader principal est à l'arrêt.
@@ -1549,7 +1651,7 @@ function demarrer() {
 
   const erreurMoteur = demarrerMoteur();
   if (erreurMoteur !== null) etat.inspecteur.definirMessageEtat(erreurMoteur);
-  else { brancherSouris(); brancherClavier(); demarrerBoucle(); }
+  else { brancherSouris(); brancherClavier(); brancherEconomie(); brancherVisibilite(); demarrerBoucle(); }
   definirDisponibiliteTransport(false);
   brancherTransport();
 

@@ -19,6 +19,13 @@
 - Correction : une perte de contexte WebGL pouvait interrompre définitivement la boucle d'animation (exception de `rendre()`).
 - Bouton « Diagnostic » (texte à copier, rien n'est envoyé) et journal borné des erreurs d'exécution.
 - Avertissement avant un export de plus de 500 Mo quand le navigateur ne peut pas écrire directement le fichier.
+- Utilisation hors-ligne : Service Worker (coque en cache, données réseau d'abord), manifeste d'application et icônes, mise à jour
+  proposée par un bandeau, « Garder tout hors-ligne ».
+- Cache persistant des miniatures (IndexedDB, purge automatique, bouton pour le vider) ; rendu des miniatures dans un Worker
+  (OffscreenCanvas) avec repli sur le fil principal.
+- Liste virtualisée au-delà de 1 000 entrées ; mode économie (30 i/s) mémorisé, suggéré quand la batterie est faible ; horloge mise
+  en pause quand l'onglet est masqué.
+- Contrôles de performance en navigateur réel (budget, hors-ligne, grand catalogue).
 - Contrôles en navigateur réel de l'export (relecture, annulation, stockage temporaire, 1080p60, synchronisation audio/vidéo).
 
 ## v1.1.0

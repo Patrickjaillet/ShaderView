@@ -15,9 +15,17 @@
   <!-- favicon:début -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64' width='64' height='64'%3E%3Cdefs%3E%3ClinearGradient id='plasma' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237c3aed'/%3E%3Cstop offset='0.55' stop-color='%23ec4899'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='%230b0f1a'/%3E%3Crect x='6' y='10' width='52' height='44' rx='8' fill='url(%23plasma)'/%3E%3Cpath d='M6 38C16 28 24 48 34 38S50 28 58 36V46a8 8 0 0 1-8 8H14a8 8 0 0 1-8-8Z' fill='%230b0f1a' opacity='0.28'/%3E%3Cpath d='M26 21L45 32L26 43Z' fill='%23ffffff'/%3E%3C/svg%3E">
   <!-- favicon:fin -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0b0f1a">
   <link rel="stylesheet" href="css/main.css">
 </head>
 <body>
+  <div id="bandeau-maj" class="bandeau-maj" role="status" hidden>
+    <span data-i18n="update.available">Une nouvelle version de ShaderView est prête.</span>
+    <button type="button" id="btn-maj" class="bouton" data-i18n="update.reload">Recharger</button>
+    <button type="button" id="btn-maj-plus-tard" class="bouton" data-i18n="update.later">Plus tard</button>
+  </div>
+
   <header class="entete">
     <h1 class="entete__titre">ShaderView</h1>
     <button type="button" id="btn-diagnostic" class="bouton entete__diagnostic" data-i18n="diag.open">Diagnostic</button>
@@ -35,6 +43,7 @@
           <output id="transport-temps" for="transport-position">0.00 s / 60.00 s</output>
         </label>
         <label class="transport__boucle"><input type="checkbox" id="transport-boucle" disabled> <span data-i18n="transport.loop">Boucle (0–60 s)</span></label>
+        <label class="transport__boucle"><input type="checkbox" id="transport-economie"> <span data-i18n="transport.economy">Mode économie (30 i/s)</span></label>
         <button type="button" id="transport-plein-ecran" class="bouton" data-i18n="transport.fullscreen" disabled>Plein écran</button>
         <button type="button" id="transport-capture" class="bouton" data-i18n="transport.capture" disabled>Capture PNG</button>
         <span id="transport-etat" class="transport__etat" role="status" aria-live="polite"></span>
@@ -172,6 +181,8 @@
       <div class="export-formulaire__actions">
         <span id="diagnostic-etat" class="diagnostic__etat" role="status"></span>
         <span>
+          <button type="button" id="diagnostic-hors-ligne" class="bouton" data-i18n="offline.keep">Garder tout hors-ligne</button>
+          <button type="button" id="diagnostic-vider-cache" class="bouton" data-i18n="diag.clearCache">Vider le cache des miniatures</button>
           <button type="button" id="diagnostic-vider" class="bouton" data-i18n="diag.clearLog">Vider le journal</button>
           <button type="button" id="diagnostic-copier" class="bouton" data-i18n="diag.copy">Copier</button>
         </span>

@@ -36,6 +36,12 @@ export const HAUTEUR_MINIATURE = 90;
  */
 export const TEMPS_CAPTURE_SECONDES = 1;
 
+/**
+ * Version du rendu des miniatures, incluse dans les clés du cache persistant : à incrémenter dès qu'un changement du
+ * moteur de rendu ou de la capture modifie l'image produite, pour que les miniatures enregistrées soient régénérées.
+ */
+export const VERSION_RENDU_MINIATURES = 2;
+
 /** Longueur maximale du message d'erreur conservé pour une miniature en échec. */
 const LONGUEUR_MAX_MESSAGE = 200;
 
@@ -89,6 +95,18 @@ export function resumerErreurCompilation(erreur) {
   return `Compilation (${erreur.idPasse ?? 'image'}), ${detail}`;
 }
 
+/**
+ * Clé de la miniature dans le cache persistant : version du rendu, clé du catalogue et empreinte du fichier.
+ * @param {{ cle: string, empreinte: string }} entree
+ * @returns {string}
+ */
+export function cleCache(entree) {
+  return `${PREFIXE_CACHE}${cleMiniature(entree)}`;
+}
+
+/** Préfixe commun des clés de la version de rendu courante (les autres versions sont purgées, voir CacheMiniatures.purger). */
+export const PREFIXE_CACHE = `v${VERSION_RENDU_MINIATURES}:`;
+
 // ---------------------------------------------------------------------------
 // Valeurs par défaut du navigateur
 // ---------------------------------------------------------------------------
@@ -136,6 +154,134 @@ export function planifierImageSuivante(tache) {
 }
 
 // ---------------------------------------------------------------------------
+// Rendu dans un Worker (OffscreenCanvas)
+// ---------------------------------------------------------------------------
+
+/** Le Worker de rendu est indisponible ou en panne : le générateur retombe sur le rendu du fil principal. */
+export class ErreurWorkerMiniatures extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ErreurWorkerMiniatures';
+  }
+}
+
+/** Convertit des octets PNG en URL de données, sans bloquer le fil principal. */
+export function octetsVersUrlDonnees(octets) {
+  return new Promise((resolu, rejeter) => {
+    const lecteur = new FileReader();
+    lecteur.onload = () => resolu(lecteur.result);
+    lecteur.onerror = () => rejeter(lecteur.error ?? new Error('Lecture de l’image impossible.'));
+    lecteur.readAsDataURL(new Blob([octets], { type: 'image/png' }));
+  });
+}
+
+/** Worker module de rendu (js/miniatures-worker.js), créé au premier besoin ; null si le navigateur ne le permet pas. */
+export function creerWorkerNavigateur() {
+  if (typeof globalThis.Worker !== 'function' || typeof globalThis.OffscreenCanvas !== 'function') return null;
+  try {
+    return new globalThis.Worker(new URL('./miniatures-worker.js', import.meta.url), { type: 'module' });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Client du Worker de rendu : une requête à la fois par miniature, réponse par identifiant. Toute panne (Worker absent, module
+ * non chargé, WebGL2 absent dans le Worker, délai dépassé) rejette avec `ErreurWorkerMiniatures` et rend le client définitivement
+ * indisponible (`disponible` faux) : l'appelant utilise alors le fil principal. Un shader qui ne compile pas, lui, rejette avec
+ * l'erreur de compilation d'origine, reconstruite à l'identique, et ne désactive rien.
+ */
+export class RenduMiniaturesWorker {
+  /**
+   * @param {object} [options]
+   * @param {() => (Worker|null)} [options.creerWorker]
+   * @param {(octets: ArrayBuffer) => Promise<string>} [options.versUrlDonnees]
+   * @param {number} [options.delaiMs] délai maximal d'une miniature
+   */
+  constructor({ creerWorker = creerWorkerNavigateur, versUrlDonnees = octetsVersUrlDonnees, delaiMs = 30000 } = {}) {
+    this._creerWorker = creerWorker;
+    this._versUrlDonnees = versUrlDonnees;
+    this._delaiMs = delaiMs;
+    this._worker = null;
+    this._enPanne = false;
+    this._suivant = 1;
+    /** @type {Map<number, { resoudre: Function, rejeter: Function, minuteur: any }>} */
+    this._attentes = new Map();
+  }
+
+  get disponible() { return !this._enPanne; }
+
+  _demarrer() {
+    if (this._worker !== null) return this._worker;
+    const worker = this._creerWorker();
+    if (worker === null || worker === undefined) throw new ErreurWorkerMiniatures('Worker de rendu indisponible dans ce navigateur.');
+    worker.addEventListener('message', (evenement) => this._surMessage(evenement.data));
+    worker.addEventListener('error', (evenement) => this._tomberEnPanne(`Erreur du Worker : ${evenement.message ?? 'inconnue'}`));
+    worker.addEventListener('messageerror', () => this._tomberEnPanne('Message du Worker illisible.'));
+    this._worker = worker;
+    return worker;
+  }
+
+  _tomberEnPanne(raison) {
+    this._enPanne = true;
+    this._worker?.terminate?.();
+    this._worker = null;
+    for (const [id, attente] of this._attentes) {
+      clearTimeout(attente.minuteur);
+      attente.rejeter(new ErreurWorkerMiniatures(raison));
+      this._attentes.delete(id);
+    }
+  }
+
+  _surMessage(reponse) {
+    const attente = this._attentes.get(reponse?.id);
+    if (attente === undefined) return;
+    this._attentes.delete(reponse.id);
+    clearTimeout(attente.minuteur);
+    if (reponse.ok) {
+      this._versUrlDonnees(reponse.octets).then(attente.resoudre, (e) => attente.rejeter(new ErreurWorkerMiniatures(`Image du Worker illisible : ${e?.message ?? e}`)));
+      return;
+    }
+    const { nom, message, erreursLigne, idPasse } = reponse.erreur;
+    if (nom === 'ErreurCompilation') attente.rejeter(new ErreurCompilation(message, erreursLigne ?? [], idPasse));
+    else if (nom === 'ErreurContexte') {
+      // WebGL2 absent dans le Worker ne dit rien du fil principal : repli, sans conclure à l'absence de WebGL2.
+      this._tomberEnPanne('WebGL2 indisponible dans le Worker.');
+      attente.rejeter(new ErreurWorkerMiniatures('WebGL2 indisponible dans le Worker.'));
+    } else attente.rejeter(new Error(message));
+  }
+
+  /**
+   * @param {import('./parser.js').ShaderNormalise} normalise shader déjà converti pour GLSL ES 3.00
+   * @param {number} temps instant de capture
+   * @returns {Promise<string>} URL de données PNG
+   * @throws {ErreurWorkerMiniatures|ErreurCompilation|Error}
+   */
+  rendre(normalise, temps) {
+    if (this._enPanne) return Promise.reject(new ErreurWorkerMiniatures('Worker de rendu en panne.'));
+    let worker;
+    try { worker = this._demarrer(); } catch (e) { this._enPanne = true; return Promise.reject(e); }
+    const id = this._suivant;
+    this._suivant += 1;
+    return new Promise((resoudre, rejeter) => {
+      const minuteur = setTimeout(() => this._tomberEnPanne('Délai du Worker dépassé.'), this._delaiMs);
+      this._attentes.set(id, { resoudre, rejeter, minuteur });
+      try {
+        worker.postMessage({ id, normalise, temps });
+      } catch (e) {
+        this._attentes.delete(id);
+        clearTimeout(minuteur);
+        rejeter(new ErreurWorkerMiniatures(`Envoi au Worker impossible : ${e?.message ?? e}`));
+      }
+    });
+  }
+
+  detruire() {
+    this._tomberEnPanne('Worker détruit.');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Générateur
 // ---------------------------------------------------------------------------
 
@@ -163,6 +309,10 @@ export class GenerateurMiniatures {
    * @param {(tache: () => void) => void} [options.planifier] planifie la prochaine génération
    * @param {() => boolean} [options.autoriser] indique si le rendu de fond peut démarrer
    * @param {number} [options.temps] temps de capture de l'image statique, en secondes
+   * @param {{ rendre: Function, disponible: boolean, detruire?: Function }|null} [options.rendreExterne] rendu hors du fil principal (voir
+   *        RenduMiniaturesWorker) ; en cas d'ErreurWorkerMiniatures, le rendu du fil principal prend le relais pour cette miniature et les suivantes
+   * @param {{ lireLot: Function, ecrire: Function }|null} [options.cache] cache persistant (voir cache-miniatures.js) : les miniatures
+   *        déjà enregistrées sont affichées sans rendu WebGL, les nouvelles y sont enregistrées
    */
   constructor({
     lireShader,
@@ -172,7 +322,15 @@ export class GenerateurMiniatures {
     planifier = planifierImageSuivante,
     autoriser = () => true,
     temps = TEMPS_CAPTURE_SECONDES,
+    cache = null,
+    rendreExterne = null,
   }) {
+    this._rendreExterne = rendreExterne;
+    /** Où les miniatures ont été rendues en dernier : « worker », « principal », ou « inconnu » avant la première. */
+    this.mode = 'inconnu';
+    this._cache = cache;
+    /** @type {Promise<void>|null} lecture du cache en cours : la génération l'attend pour ne pas rendre ce qui est déjà enregistré */
+    this._hydratation = null;
     this._lireShader = lireShader;
     this._creerMoteur = creerMoteur;
     this._creerImage = creerImage;
@@ -234,7 +392,30 @@ export class GenerateurMiniatures {
       .map((entree) => ({ entree, fiche: this._fiche(entree) }))
       .filter(({ fiche }) => fiche.etat === ETAT_MINIATURE.EN_ATTENTE)
       .map(({ entree }) => cleMiniature(entree));
+    this._hydratation = this._cache === null ? null : this._hydraterDepuisCache();
     this._planifierSuite();
+  }
+
+  /**
+   * Affiche les miniatures de la file déjà présentes dans le cache persistant (une seule lecture groupée), sans rendu.
+   * Une entrée n'est interrogée qu'une fois : un nouveau tri ou filtre ne relit pas ses échecs.
+   */
+  async _hydraterDepuisCache() {
+    const jeton = this._jeton;
+    const fiches = this._file
+      .map((cle) => this._fiches.get(cle))
+      .filter((fiche) => fiche !== undefined && fiche.etat === ETAT_MINIATURE.EN_ATTENTE && !fiche.cacheInterroge);
+    if (fiches.length === 0) return;
+    for (const fiche of fiches) fiche.cacheInterroge = true;
+    const lus = await this._cache.lireLot(fiches.map((fiche) => cleCache(fiche.entree)));
+    if (jeton !== this._jeton) return;
+    for (const fiche of fiches) {
+      const donnees = lus.get(cleCache(fiche.entree));
+      if (donnees === undefined || fiche.etat !== ETAT_MINIATURE.EN_ATTENTE) continue;
+      fiche.image.src = donnees;
+      this._definirEtat(fiche, ETAT_MINIATURE.PRETE, null);
+    }
+    this._file = this._file.filter((cle) => this._fiches.get(cle)?.etat === ETAT_MINIATURE.EN_ATTENTE);
   }
 
   /** Reprend la file si le travail de fond est désormais autorisé. */
@@ -259,6 +440,7 @@ export class GenerateurMiniatures {
     this._fiches.clear();
     if (this._moteur !== null && typeof this._moteur.detruire === 'function') this._moteur.detruire();
     this._moteur = null;
+    this._rendreExterne?.detruire?.();
   }
 
   // -------------------------------------------------------------------------
@@ -302,6 +484,12 @@ export class GenerateurMiniatures {
 
   async _traiterSuivante() {
     if (this._enCours || !this._autoriser()) return;
+    if (this._hydratation !== null) {
+      const attente = this._hydratation;
+      this._hydratation = null;
+      this._enCours = true;
+      try { await attente; } catch { /* le cache ne bloque jamais la génération */ } finally { this._enCours = false; }
+    }
     const cle = this._file.shift();
     const fiche = cle === undefined ? undefined : this._fiches.get(cle);
     if (fiche === undefined || fiche.etat !== ETAT_MINIATURE.EN_ATTENTE) {
@@ -338,8 +526,25 @@ export class GenerateurMiniatures {
         return;
       }
       const normalise = convertirShaderNormalise(parserShader(shader));
-      this._rendreDans(fiche, normalise, this._temps);
+      let rendue = false;
+      if (this._rendreExterne !== null && this._rendreExterne.disponible) {
+        try {
+          const url = await this._rendreExterne.rendre(normalise, this._temps);
+          if (jeton !== this._jeton) { this._definirEtat(fiche, ETAT_MINIATURE.EN_ATTENTE, null); return; }
+          fiche.image.src = url;
+          this.mode = 'worker';
+          rendue = true;
+        } catch (e) {
+          if (!(e instanceof ErreurWorkerMiniatures)) throw e;
+          // Worker en panne : cette miniature et les suivantes sont rendues sur le fil principal.
+        }
+      }
+      if (!rendue) {
+        this._rendreDans(fiche, normalise, this._temps);
+        this.mode = 'principal';
+      }
       this._definirEtat(fiche, ETAT_MINIATURE.PRETE, null);
+      if (this._cache !== null) void this._cache.ecrire(cleCache(fiche.entree), fiche.image.src);
     } catch (e) {
       if (e instanceof ErreurContexte) {
         this._signalerContexteIndisponible(resumerErreur(e));

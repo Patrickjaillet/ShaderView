@@ -35,7 +35,8 @@ export function dependancesNonConsignees(racine = RACINE) {
 
 export function fichiersPublicationManquants(racine = RACINE) {
   return ['index.html', '.nojekyll', 'LICENSE', 'COPYING', 'THIRD_PARTY_NOTICES.md', 'README.md',
-    'shaders/manifest.json', 'branding/favicon.svg'].filter((f) => !existsSync(join(racine, f)));
+    'shaders/manifest.json', 'branding/favicon.svg', 'sw.js', 'manifest.webmanifest', 'branding/icone-192.png', 'branding/icone-512.png',
+    'branding/icone-maskable-512.png'].filter((f) => !existsSync(join(racine, f)));
 }
 
 function lancer(nom, args) {
@@ -48,6 +49,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const etapes = [];
   etapes.push(lancer('manifestes', options.has('--regenerer')
     ? ['tools/build-manifest.mjs', '--strict'] : ['tools/build-manifest.mjs', '--check']));
+  etapes.push(lancer('Service Worker', ['tools/generer-sw.mjs', ...(options.has('--regenerer') ? [] : ['--check'])]));
   etapes.push(lancer('en-têtes SPDX', ['tools/check-headers.mjs']));
   etapes.push(lancer('audit réseau', ['tools/audit-reseau.mjs']));
 

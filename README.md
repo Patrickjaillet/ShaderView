@@ -49,6 +49,7 @@ node tools/check-headers.mjs            # vérifie les en-têtes de licence des 
 node tools/inline-favicon.mjs           # réinjecte branding/favicon.svg dans index.html
 node tools/audit-reseau.mjs             # vérifie l'absence de requête réseau et la CSP
 node tools/build.mjs                    # contrôle complet avant publication
+node tools/generer-sw.mjs               # recalcule la version et la liste de la coque dans sw.js (--check : vérifie)
 node tools/regression-visuelle.mjs      # rend le corpus dans Chromium/Edge sans écran et compare aux références
 node tools/regression-visuelle.mjs --compilation   # vérifie que tous les shaders de shaders/ compilent
 node --test "tests/*.test.mjs"          # lance les tests automatisés
@@ -105,6 +106,25 @@ node tools/regression-visuelle.mjs --export-long     # 1920 × 1080, 60 i/s, 10 
 node tools/regression-visuelle.mjs --sync-av         # écart audio/vidéo mesuré sur les fichiers exportés
 node tools/regression-visuelle.mjs --perte-contexte  # perte puis restauration du contexte WebGL
 ```
+
+```sh
+node tools/budget-performance.mjs         # démarrage et 100 changements de shader : aucune fuite WebGL, mémoire ou nœuds
+node tools/controle-hors-ligne.mjs        # Service Worker : installation, page rechargée serveur arrêté, mise à jour contrôlée
+node tools/controle-grand-catalogue.mjs   # liste virtualisée sur plus de 4 000 entrées
+```
+
+## Utilisation hors-ligne
+
+Après une première visite en HTTPS (ou sur `localhost`), un Service Worker (`sw.js`) garde la coque du site (page, styles, scripts,
+icônes) : ShaderView s'ouvre ensuite sans connexion, et peut s'installer comme application (`manifest.webmanifest`). Les shaders,
+médias et pistes audio lus une fois restent disponibles ; « Diagnostic » → « Garder tout hors-ligne » charge tout le catalogue d'un coup.
+En ligne, les données sont toujours relues sur le serveur (réseau d'abord, copie en secours). Une nouvelle version du site est
+présentée par un bandeau « Recharger » : l'ancienne reste en place tant que vous n'acceptez pas. Après avoir modifié un fichier de
+la coque, relancer `node tools/generer-sw.mjs` (le contrôle de publication refuse un `sw.js` périmé).
+
+Les miniatures déjà rendues sont conservées dans IndexedDB (clé : fichier, empreinte et version du rendu), rendues dans un Worker
+(OffscreenCanvas) quand le navigateur le permet, et le « mode économie » limite le rendu à 30 images par seconde. Au-delà de
+1 000 entrées affichées, la liste ne monte dans le document que les lignes visibles.
 
 Le bouton « Diagnostic » de l'en-tête affiche un texte (navigateur, GPU, extensions WebGL, codecs, shader courant, erreurs
 d'exécution récentes) à copier dans un signalement ; rien n'est envoyé.
