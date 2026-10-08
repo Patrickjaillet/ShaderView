@@ -2,7 +2,7 @@
 
 © 2026 SANDEFJORD / Patrick JAILLET — Distribué sous licence GPL-3.0-or-later
 
-## Non publié
+## v1.1.0
 
 - Lecture des entrées `video` : un fichier de `shaders/media/` alimente le canal en texture vidéo, calée sur l'horloge du shader
   (image par image à l'export).
